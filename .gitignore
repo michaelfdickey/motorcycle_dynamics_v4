@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.svelte-kit/
+
+# PID files
+.backend.pid
+.frontend.pid
+
+# OS
+.DS_Store

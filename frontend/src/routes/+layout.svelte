@@ -1,6 +1,21 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	let { children } = $props();
+
+	const tabs = [
+		{ label: 'Home', href: '/' },
+		{ label: 'Front End', href: '/front-end' },
+		{ label: 'Suspension', href: '/suspension' },
+		{ label: 'Frame FEA', href: '/frame-fea' },
+		{ label: 'Kinematics', href: '/kinematics' },
+		{ label: 'Geometry', href: '/geometry' },
+		{ label: 'Aero / CFD', href: '/aero-cfd' },
+		{ label: 'Materials', href: '/materials' },
+		{ label: 'Components', href: '/components' },
+		{ label: 'Results', href: '/results' },
+		{ label: 'Settings', href: '/settings' },
+	];
 </script>
 
 <div class="min-h-screen bg-gray-950 text-gray-100">
@@ -18,10 +33,22 @@
 					<span class="ml-1 text-gray-400 font-normal">Motorcycle Dynamics</span>
 				</h1>
 			</div>
-			<nav class="flex gap-6 text-sm text-gray-400">
-				<a href="/" class="hover:text-gray-100 transition-colors">Home</a>
-			</nav>
 		</div>
+		<nav class="mx-auto max-w-7xl px-6">
+			<div class="flex gap-1 overflow-x-auto">
+				{#each tabs as tab}
+					<a
+						href={tab.href}
+						class="whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg transition-colors
+							{page.url.pathname === tab.href
+								? 'bg-gray-800 text-orange-500 border-t border-x border-orange-500/40'
+								: 'text-gray-400 hover:text-gray-100 hover:bg-gray-800/50'}"
+					>
+						{tab.label}
+					</a>
+				{/each}
+			</div>
+		</nav>
 	</header>
 
 	<main class="mx-auto max-w-7xl px-6 py-8">

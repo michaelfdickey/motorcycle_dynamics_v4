@@ -2,7 +2,7 @@
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 
-	let { results, tire }: { results: FrontEndResults; tire: TireDimensions } = $props();
+	let { results, tire, steeringColumnLengthMm }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number } = $props();
 
 	// SVG coordinate system: we need to flip y (SVG y goes down, our geometry y goes up).
 	// We'll set up a viewBox that maps our geometry with a transform.
@@ -30,6 +30,11 @@
 		xs.push(results.axleCenter.x + tire.outerRadiusMm);
 		ys.push(0); // ground
 		ys.push(results.axleCenter.y + tire.outerRadiusMm);
+		// Include steering column extent (half length in each direction from forkTop)
+		const halfSC = steeringColumnLengthMm / 2 + 30;
+		xs.push(results.forkTop.x - halfSC);
+		xs.push(results.forkTop.x + halfSC);
+		ys.push(results.forkTop.y + halfSC);
 
 		const pad = 60;
 		const minX = Math.min(...xs) - pad;
@@ -57,17 +62,25 @@
 	const hingeRadius = $derived(sw * 3);
 	const fontSize = $derived(bounds.width / 25);
 
-	// Steering column rectangle dimensions
-	const scW = $derived(sw * 12);
-	const scH = $derived(sw * 8);
-	const scCx = $derived(results.forkTop.x);
-	const scCy = $derived(results.forkTop.y);
+	// Steering column rectangle: long axis parallel to steering axis
+	// Length = user-specified (4-12"), width = fixed proportional thickness (50mm)
+	const scLength = $derived(steeringColumnLengthMm);  // long dimension, along steering axis
+	const scWidth = $derived(50);                         // short dimension, perpendicular to axis
+	const scCx = $derived(results.steeringColumnCenter.x);
+	const scCy = $derived(results.steeringColumnCenter.y);
 	const rakeRad = $derived(
 		Math.atan2(
 			results.steeringAxisTop.x - results.steeringAxisGround.x,
 			results.steeringAxisTop.y - results.steeringAxisGround.y
 		)
 	);
+
+	// Lower triple clamp: point on the SA at the same level as forkBottom
+	// Offset vector from forkTop to steeringColumnCenter is the same as forkBottom to lowerTripleOnSA
+	const lowerTripleOnSA = $derived({
+		x: results.forkBottom.x + (results.steeringColumnCenter.x - results.forkTop.x),
+		y: results.forkBottom.y + (results.steeringColumnCenter.y - results.forkTop.y),
+	});
 
 	// Trail dimension line y position
 	const dimY = $derived(sy(-bounds.height * 0.06));
@@ -110,16 +123,41 @@
 	/>
 
 	<!-- Steering column rectangle at top of fork -->
+	<!-- Rect is drawn with height=scLength (along axis) and width=scWidth (across axis). -->
+	<!-- Rotated so the long axis aligns with the steering axis direction. -->
+	<!-- rakeRad is the angle of the SA from vertical; in SVG (y-flipped) the rotation is rakeRad in degrees. -->
 	<rect
-		x={-scW / 2}
-		y={-scH / 2}
-		width={scW}
-		height={scH}
+		x={-scWidth / 2}
+		y={-scLength / 2}
+		width={scWidth}
+		height={scLength}
 		fill="#4b5563"
 		stroke="#9ca3af"
 		stroke-width={swThin}
 		transform="translate({scCx},{sy(scCy)}) rotate({(rakeRad * 180) / Math.PI})"
 	/>
+
+	<!-- Triple clamp: connects steering column (on SA) to fork tube (offset from SA) -->
+	<!-- Upper triple clamp: from steeringColumnCenter to forkTop -->
+	<line
+		x1={results.steeringColumnCenter.x}
+		y1={sy(results.steeringColumnCenter.y)}
+		x2={results.forkTop.x}
+		y2={sy(results.forkTop.y)}
+		stroke="#9ca3af"
+		stroke-width={swThick}
+	/>
+	<!-- Lower triple clamp (telescopic only): perpendicular bar at axle end -->
+	{#if !results.linkPivot}
+		<line
+			x1={lowerTripleOnSA.x}
+			y1={sy(lowerTripleOnSA.y)}
+			x2={results.forkBottom.x}
+			y2={sy(results.forkBottom.y)}
+			stroke="#9ca3af"
+			stroke-width={sw}
+		/>
+	{/if}
 
 	<!-- Link arms (for leading/trailing link) -->
 	{#if results.linkPivot && results.linkEnd}

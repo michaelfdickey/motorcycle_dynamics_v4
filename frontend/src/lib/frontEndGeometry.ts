@@ -36,6 +36,7 @@ export interface FrontEndResults {
 	steeringAxisTop: Point;
 	forkTop: Point;     // upper end of fork / lower triple
 	forkBottom: Point;  // lower end of fork / axle area
+	steeringColumnCenter: Point; // center of steering column, on the steering axis
 	// For link types
 	linkPivot?: Point;
 	linkEnd?: Point;    // link end attaches to axle
@@ -116,6 +117,15 @@ export function computeFrontEnd(inputs: FrontEndInputs, tire: TireDimensions): F
 			y: axleCenter.y + cosRake * inputs.forkLengthMm,
 		};
 
+		// Steering column center: on the steering axis at forkTop level
+		// forkTop is offset from SA by forkOffset perpendicular.
+		// Perpendicular toward front: (cos(rake), sin(rake))
+		// So SA point = forkTop - forkOffset * perpendicular
+		const scCenter: Point = {
+			x: forkTop.x - cosRake * inputs.forkOffsetMm,
+			y: forkTop.y - sinRake * inputs.forkOffsetMm,
+		};
+
 		return {
 			trailMm,
 			mechanicalTrailMm,
@@ -128,6 +138,7 @@ export function computeFrontEnd(inputs: FrontEndInputs, tire: TireDimensions): F
 			steeringAxisTop,
 			forkTop,
 			forkBottom,
+			steeringColumnCenter: scCenter,
 		};
 	}
 
@@ -229,6 +240,10 @@ export function computeFrontEnd(inputs: FrontEndInputs, tire: TireDimensions): F
 		y: saRefY + cosRake * saTopDist,
 	};
 
+	// Steering column center: on the steering axis at forkTop level
+	// saRef is already the point on the SA at forkTop level
+	const scCenter: Point = { x: saRefX, y: saRefY };
+
 	return {
 		trailMm,
 		mechanicalTrailMm,
@@ -241,6 +256,7 @@ export function computeFrontEnd(inputs: FrontEndInputs, tire: TireDimensions): F
 		steeringAxisTop,
 		forkTop,
 		forkBottom,
+		steeringColumnCenter: scCenter,
 		linkPivot,
 		linkEnd,
 	};

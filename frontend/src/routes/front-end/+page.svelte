@@ -95,12 +95,12 @@
 					<span class="text-xs text-gray-500">Rake angle (deg from vertical)</span>
 					<div class="flex items-center gap-2 mt-1">
 						<input
-							type="range" min="10" max="45" step="0.5"
+							type="range" min="-10" max="60" step="0.5"
 							bind:value={rakeAngleDeg}
 							class="flex-1 accent-orange-500"
 						/>
 						<input
-							type="number" step="0.5" min="0" max="60"
+							type="number" step="0.5" min="-10" max="60"
 							bind:value={rakeAngleDeg}
 							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
 						/>
@@ -111,12 +111,12 @@
 					<span class="text-xs text-gray-500">Fork offset (mm)</span>
 					<div class="flex items-center gap-2 mt-1">
 						<input
-							type="range" min="0" max="80" step="1"
+							type="range" min="-152" max="152" step="1"
 							bind:value={forkOffsetMm}
 							class="flex-1 accent-orange-500"
 						/>
 						<input
-							type="number" step="1" min="0" max="200"
+							type="number" step="1" min="-152" max="152"
 							bind:value={forkOffsetMm}
 							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
 						/>
@@ -243,7 +243,7 @@
 			<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Side View</h3>
 			{#if results && tireDims}
 				<div class="aspect-[4/5] w-full">
-					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} />
+					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} />
 				</div>
 			{:else}
 				<div class="flex items-center justify-center h-64 text-gray-600">

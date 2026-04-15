@@ -107,23 +107,26 @@ export function computeFrontEnd(inputs: FrontEndInputs, tire: TireDimensions): F
 			y: saGround.y + cosRake * saLength,
 		};
 
-		// Fork bottom (at axle): offset perpendicular to steering axis toward the front
-		// Perpendicular to steering axis (forward direction): dx = cos(rake), dy = sin(rake)
+		// Fork bottom (at axle): the axle is at (0, wheelRadius)
 		forkBottom = { ...axleCenter };
 
-		// Fork top: from axle, go up along steering axis by forkLength
+		// Fork top: from axle, go up along the steering axis direction by forkLength
+		// (fork tube is parallel to SA, offset by forkOffset)
 		forkTop = {
 			x: axleCenter.x - sinRake * inputs.forkLengthMm,
 			y: axleCenter.y + cosRake * inputs.forkLengthMm,
 		};
 
-		// Steering column center: on the steering axis at forkTop level
-		// forkTop is offset from SA by forkOffset perpendicular.
-		// Perpendicular toward front: (cos(rake), sin(rake))
-		// So SA point = forkTop - forkOffset * perpendicular
+		// Steering column center: a point ON the steering axis line,
+		// at the same distance along the axis as forkTop.
+		// The SA line starts at saGround, direction (-sinRake, cosRake).
+		// The forkTop is at distance forkLength along the axis from the axle level.
+		// The axle-level point on the SA is at parameter t = wheelRadius / cosRake from saGround.
+		// The forkTop-level point on the SA is at parameter t = (wheelRadius / cosRake) + forkLength.
+		const tForkTop = wheelRadius / cosRake + inputs.forkLengthMm;
 		const scCenter: Point = {
-			x: forkTop.x - cosRake * inputs.forkOffsetMm,
-			y: forkTop.y - sinRake * inputs.forkOffsetMm,
+			x: saGround.x - sinRake * tForkTop,
+			y: saGround.y + cosRake * tForkTop,
 		};
 
 		return {

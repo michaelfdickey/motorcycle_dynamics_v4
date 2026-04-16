@@ -93,7 +93,7 @@
 <div class="space-y-6">
 	<h2 class="text-2xl font-bold">Front End Geometry</h2>
 
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+	<div class="grid grid-cols-1 lg:grid-cols-[minmax(280px,1fr)_2fr] gap-6">
 		<!-- ── Left column: Inputs ── -->
 		<div class="space-y-4">
 
@@ -264,6 +264,13 @@
 					</label>
 				{/if}
 
+				<!-- Steering Column section divider -->
+				<div class="flex items-center gap-3 pt-2">
+					<div class="flex-1 border-t border-gray-700"></div>
+					<span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Steering Column</span>
+					<div class="flex-1 border-t border-gray-700"></div>
+				</div>
+
 				<label class="block">
 					<span class="text-xs text-gray-500">Steering column height (mm)</span>
 					<div class="flex items-center gap-2 mt-1">
@@ -295,6 +302,13 @@
 						/>
 					</div>
 				</label>
+
+				<!-- Spindle Mount section divider -->
+				<div class="flex items-center gap-3 pt-2">
+					<div class="flex-1 border-t border-gray-700"></div>
+					<span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Spindle Mount</span>
+					<div class="flex-1 border-t border-gray-700"></div>
+				</div>
 
 				<label class="block">
 					<span class="text-xs text-gray-500">Spindle offset (mm) - perpendicular to fork</span>

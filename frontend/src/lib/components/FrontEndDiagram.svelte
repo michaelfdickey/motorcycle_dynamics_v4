@@ -20,9 +20,58 @@
 		return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
 	});
 
-	const viewBox = $derived(
+	const baseViewBox = $derived(
 		`${bounds.minX} ${-bounds.maxY} ${bounds.width} ${bounds.height}`
 	);
+
+	// --- Pan & zoom state ---
+	let panX = $state(0);
+	let panY = $state(0);
+	let zoom = $state(1);
+	let isPanning = $state(false);
+	let panStartX = $state(0);
+	let panStartY = $state(0);
+	let panStartPanX = $state(0);
+	let panStartPanY = $state(0);
+	let svgEl: SVGSVGElement | undefined = $state();
+
+	const viewBox = $derived.by(() => {
+		const w = bounds.width / zoom;
+		const h = bounds.height / zoom;
+		const cx = bounds.minX + bounds.width / 2 - panX;
+		const cy = -bounds.maxY + bounds.height / 2 - panY;
+		return `${cx - w / 2} ${cy - h / 2} ${w} ${h}`;
+	});
+
+	function onPointerDown(e: PointerEvent) {
+		if (e.button !== 0) return;
+		isPanning = true;
+		panStartX = e.clientX;
+		panStartY = e.clientY;
+		panStartPanX = panX;
+		panStartPanY = panY;
+		(e.currentTarget as Element).setPointerCapture(e.pointerId);
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		if (!isPanning || !svgEl) return;
+		const rect = svgEl.getBoundingClientRect();
+		const scaleX = bounds.width / (rect.width * zoom);
+		const scaleY = bounds.height / (rect.height * zoom);
+		panX = panStartPanX + (e.clientX - panStartX) * scaleX;
+		panY = panStartPanY + (e.clientY - panStartY) * scaleY;
+	}
+
+	function onPointerUp() {
+		isPanning = false;
+	}
+
+	function onWheel(e: WheelEvent) {
+		if (!e.shiftKey) return;
+		e.preventDefault();
+		const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+		zoom = Math.max(0.1, Math.min(20, zoom * factor));
+	}
 
 	// Scale-independent sizes
 	const sw = $derived(bounds.width / 300);
@@ -246,15 +295,121 @@
 		};
 	});
 
+	// --- Fork end cap ---
+	// 2" OD circle (25.4mm radius) centered 1" (25.4mm) below fork bottom on fork offset line
+	const forkCapR = 25.4; // 2" OD = 1" radius
+	const forkCapCenter = $derived.by(() => {
+		const t = forkBottomForSpindle - 25.4;
+		return forkPoint(t);
+	});
+
+	// Fork bottom edge points (where lower tube meets cap parallel lines)
+	const forkBottomWidth = $derived(
+		suspensionType === 'telescopic' ? lowerTubeWidth : upperTubeWidth
+	);
+	const forkBottomCenter = $derived(forkPoint(forkBottomForSpindle));
+
+	// Parallel lines from fork bottom edges to cap circle tangent points
+	// The fork edges are at +/- halfWidth along saPerp from forkBottomCenter
+	// The cap circle tangent points are at +/- forkCapR along saPerp from forkCapCenter
+	const forkCapLines = $derived.by(() => {
+		const hw = forkBottomWidth / 2;
+		const topLeft = {
+			x: forkBottomCenter.x + hw * saPerp.x,
+			y: forkBottomCenter.y + hw * saPerp.y,
+		};
+		const topRight = {
+			x: forkBottomCenter.x - hw * saPerp.x,
+			y: forkBottomCenter.y - hw * saPerp.y,
+		};
+		const botLeft = {
+			x: forkCapCenter.x + forkCapR * saPerp.x,
+			y: forkCapCenter.y + forkCapR * saPerp.y,
+		};
+		const botRight = {
+			x: forkCapCenter.x - forkCapR * saPerp.x,
+			y: forkCapCenter.y - forkCapR * saPerp.y,
+		};
+		return { topLeft, topRight, botLeft, botRight };
+	});
+
+	// --- Tangent lines from fork cap circle to spindle inner circle ---
+	// Both circles have the same radius (12.7mm for cap, 25.4mm for spindle inner).
+	// For equal-radius circles, external tangent lines are parallel to the line
+	// connecting centers. The tangent touch points are offset perpendicular to that line.
+	const tangentLines = $derived.by(() => {
+		const dx = spindleCenter.x - forkCapCenter.x;
+		const dy = spindleCenter.y - forkCapCenter.y;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+		if (dist < 0.01) return null;
+
+		// Direction from cap center to spindle center
+		const ux = dx / dist;
+		const uy = dy / dist;
+
+		// Perpendicular
+		const px = uy;
+		const py = -ux;
+
+		// For external tangents on same-side: offset both circles by +r or -r along perp
+		// Cap circle (forkCapR) and spindle inner circle (spindleInnerR)
+		// External tangent: the tangent points are at perpendicular offset from center
+		// For circles of different radii r1, r2, external tangent angle:
+		// sin(alpha) = (r1 - r2) / dist  (for external tangents where lines don't cross between)
+		// Actually for external tangent: sin(alpha) = (r1 + r2) / dist would be internal
+		// External tangent with same-side: sin(alpha) = (r2 - r1) / dist
+		// But we want same-side tangents (top of cap to top of spindle)
+
+		const r1 = forkCapR;
+		const r2 = spindleInnerR;
+
+		// For external tangent (not crossing between circles):
+		// The tangent line touches circle 1 at angle and circle 2 at same angle
+		// sin(theta) = (r1 - r2) / dist
+		const sinTheta = (r1 - r2) / dist;
+		const cosTheta = Math.sqrt(Math.max(0, 1 - sinTheta * sinTheta));
+
+		// Tangent touch points on cap circle (r1)
+		// Rotated perpendicular by theta
+		const capTop = {
+			x: forkCapCenter.x + r1 * (px * cosTheta + ux * sinTheta),
+			y: forkCapCenter.y + r1 * (py * cosTheta + uy * sinTheta),
+		};
+		const capBot = {
+			x: forkCapCenter.x - r1 * (px * cosTheta - ux * sinTheta),
+			y: forkCapCenter.y - r1 * (py * cosTheta - uy * sinTheta),
+		};
+
+		// Tangent touch points on spindle inner circle (r2)
+		const spindleTop = {
+			x: spindleCenter.x + r2 * (px * cosTheta + ux * sinTheta),
+			y: spindleCenter.y + r2 * (py * cosTheta + uy * sinTheta),
+		};
+		const spindleBot = {
+			x: spindleCenter.x - r2 * (px * cosTheta - ux * sinTheta),
+			y: spindleCenter.y - r2 * (py * cosTheta - uy * sinTheta),
+		};
+
+		return { capTop, capBot, spindleTop, spindleBot };
+	});
+
 	function polyPoints(corners: { x: number; y: number }[]): string {
 		return corners.map(c => `${c.x},${sy(c.y)}`).join(' ');
 	}
 </script>
 
 <svg
+	bind:this={svgEl}
 	viewBox={viewBox}
 	class="w-full h-full"
+	class:cursor-grabbing={isPanning}
+	class:cursor-grab={!isPanning}
 	xmlns="http://www.w3.org/2000/svg"
+	onpointerdown={onPointerDown}
+	onpointermove={onPointerMove}
+	onpointerup={onPointerUp}
+	onpointerleave={onPointerUp}
+	onwheel={onWheel}
 >
 	<!-- Steering axis (dashed yellow) -->
 	<line
@@ -328,6 +483,54 @@
 		stroke="#9ca3af"
 		stroke-width={swThin}
 	/>
+
+	<!-- Fork end cap: parallel lines from fork bottom to cap circle -->
+	<line
+		x1={forkCapLines.topLeft.x}
+		y1={sy(forkCapLines.topLeft.y)}
+		x2={forkCapLines.botLeft.x}
+		y2={sy(forkCapLines.botLeft.y)}
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+	<line
+		x1={forkCapLines.topRight.x}
+		y1={sy(forkCapLines.topRight.y)}
+		x2={forkCapLines.botRight.x}
+		y2={sy(forkCapLines.botRight.y)}
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+
+	<!-- Fork end cap circle (1" OD) -->
+	<circle
+		cx={forkCapCenter.x}
+		cy={sy(forkCapCenter.y)}
+		r={forkCapR}
+		fill="none"
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+
+	<!-- Tangent lines from fork cap to spindle mount -->
+	{#if tangentLines}
+		<line
+			x1={tangentLines.capTop.x}
+			y1={sy(tangentLines.capTop.y)}
+			x2={tangentLines.spindleTop.x}
+			y2={sy(tangentLines.spindleTop.y)}
+			stroke="#9ca3af"
+			stroke-width={swThin}
+		/>
+		<line
+			x1={tangentLines.capBot.x}
+			y1={sy(tangentLines.capBot.y)}
+			x2={tangentLines.spindleBot.x}
+			y2={sy(tangentLines.spindleBot.y)}
+			stroke="#9ca3af"
+			stroke-width={swThin}
+		/>
+	{/if}
 
 	<!-- Spindle mount: outer ring (2" radius) -->
 	<circle

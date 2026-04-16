@@ -2,7 +2,7 @@
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean } = $props();
 
 	// Flip y for SVG
 	function sy(y: number): number { return -y; }
@@ -94,15 +94,37 @@
 	// 4 corners of top triple tree
 	const topTtCorners = $derived.by(() => {
 		const bc = ttBottomCenter;
-		// Bottom-left (min perp direction)
 		const bl = { x: bc.x + ttMinPerp * saPerp.x, y: bc.y + ttMinPerp * saPerp.y };
-		// Bottom-right (max perp direction)
 		const br = { x: bc.x + ttMaxPerp * saPerp.x, y: bc.y + ttMaxPerp * saPerp.y };
-		// Top-right (up along SA by thickness)
 		const tr = { x: br.x + ttThickness * saDir.x, y: br.y + ttThickness * saDir.y };
-		// Top-left
 		const tl = { x: bl.x + ttThickness * saDir.x, y: bl.y + ttThickness * saDir.y };
 		return [bl, br, tr, tl];
+	});
+
+	// SC bottom edge midpoint (on SA)
+	const scBottomMid = $derived({
+		x: scCx - (scLength / 2) * saDir.x,
+		y: scCy - (scLength / 2) * saDir.y,
+	});
+
+	// Bottom TT: top edge sits flush with SC bottom (with gap), extends downward
+	const btTopCenter = $derived({
+		x: scBottomMid.x - ttGap * saDir.x,
+		y: scBottomMid.y - ttGap * saDir.y,
+	});
+
+	// 4 corners of bottom triple tree
+	const bottomTtCorners = $derived.by(() => {
+		const tc = btTopCenter;
+		// Top-left
+		const tl = { x: tc.x + ttMinPerp * saPerp.x, y: tc.y + ttMinPerp * saPerp.y };
+		// Top-right
+		const tr = { x: tc.x + ttMaxPerp * saPerp.x, y: tc.y + ttMaxPerp * saPerp.y };
+		// Bottom-right (down along -saDir by thickness)
+		const br = { x: tr.x - ttThickness * saDir.x, y: tr.y - ttThickness * saDir.y };
+		// Bottom-left
+		const bl = { x: tl.x - ttThickness * saDir.x, y: tl.y - ttThickness * saDir.y };
+		return [tl, tr, br, bl];
 	});
 
 	// Fork offset line endpoints: parallel to SA, shifted by forkOffsetSigned along saPerp
@@ -115,6 +137,115 @@
 		y: saLineTop.y + forkOffsetSigned * saPerp.y,
 	});
 
+	// --- Telescopic fork tubes (stanchion + slider) ---
+	// Approach 1: Total length + travel.
+	// Stanchion (narrow, upper): fixed to the triple trees, its length is determined
+	// by the triple tree spacing. It must span from above upper TT to below lower TT.
+	// Slider (wide, lower): slides over the stanchion. At full extension, overlap = forkTravelMm.
+	// Compression reduces the effective fork length and increases the overlap.
+
+	// Key positions along SA (parameter t from scCenter)
+	const lowerTtOuterT = $derived(-(scLength / 2 + ttGap + ttThickness));
+	const upperTtOuterT = $derived(scLength / 2 + ttGap + ttThickness);
+
+	// Stanchion top: protrudes above upper TT by ttThickness
+	const stanchionTopT = $derived(upperTtOuterT + ttThickness);
+
+	// Minimum overlap between stanchion and slider at full extension (real forks: 80-100mm)
+	const minOverlapMm = 80;
+	const halfOverlap = minOverlapMm / 2;
+
+	// Stanchion length: spans from stanchionTop down past lower TT + travel + half overlap
+	const stanchionLen = $derived(stanchionTopT - lowerTtOuterT + forkTravelMm + halfOverlap);
+	const stanchionBottomT = $derived(stanchionTopT - stanchionLen);
+
+	// Compression amount in mm
+	const compressionMm = $derived(forkTravelMm * compressionPct / 100);
+
+	// Effective fork length at current compression
+	const effectiveForkLen = $derived(forkLengthMm - compressionMm);
+
+	// Slider bottom: determined by effective fork length from stanchion top
+	const sliderBottomT = $derived(stanchionTopT - effectiveForkLen);
+
+	// Slider length: base length + half overlap so both tubes contribute to engagement
+	const sliderLen = $derived(forkLengthMm - stanchionLen + minOverlapMm);
+	const sliderTopT = $derived(sliderBottomT + sliderLen);
+
+	// Widths: use actual tube diameters; inverted (USD) swaps which is upper vs lower
+	const upperTubeWidth = $derived(invertedForks ? sliderDiaMm : stanchionDiaMm);
+	const lowerTubeWidth = $derived(invertedForks ? stanchionDiaMm : sliderDiaMm);
+
+	// Helper to get a point on the fork offset line at parameter t
+	function forkPoint(t: number): { x: number; y: number } {
+		return {
+			x: scCx + t * saDir.x + forkOffsetSigned * saPerp.x,
+			y: scCy + t * saDir.y + forkOffsetSigned * saPerp.y,
+		};
+	}
+
+	// Stanchion polygon corners (upper tube)
+	const stanchionCorners = $derived.by(() => {
+		const top = forkPoint(stanchionTopT);
+		const bot = forkPoint(stanchionBottomT);
+		const hw = upperTubeWidth / 2;
+		return [
+			{ x: top.x + hw * saPerp.x, y: top.y + hw * saPerp.y },
+			{ x: top.x - hw * saPerp.x, y: top.y - hw * saPerp.y },
+			{ x: bot.x - hw * saPerp.x, y: bot.y - hw * saPerp.y },
+			{ x: bot.x + hw * saPerp.x, y: bot.y + hw * saPerp.y },
+		];
+	});
+
+	// Slider polygon corners (lower tube)
+	const sliderCorners = $derived.by(() => {
+		const top = forkPoint(sliderTopT);
+		const bot = forkPoint(sliderBottomT);
+		const hw = lowerTubeWidth / 2;
+		return [
+			{ x: top.x + hw * saPerp.x, y: top.y + hw * saPerp.y },
+			{ x: top.x - hw * saPerp.x, y: top.y - hw * saPerp.y },
+			{ x: bot.x - hw * saPerp.x, y: bot.y - hw * saPerp.y },
+			{ x: bot.x + hw * saPerp.x, y: bot.y + hw * saPerp.y },
+		];
+	});
+
+	// Solid fork for link types (single rectangle, full fork length)
+	const solidForkBottomT = $derived(stanchionTopT - forkLengthMm);
+	const solidForkCorners = $derived.by(() => {
+		const top = forkPoint(stanchionTopT);
+		const bot = forkPoint(solidForkBottomT);
+		const hw = upperTubeWidth / 2;
+		return [
+			{ x: top.x + hw * saPerp.x, y: top.y + hw * saPerp.y },
+			{ x: top.x - hw * saPerp.x, y: top.y - hw * saPerp.y },
+			{ x: bot.x - hw * saPerp.x, y: bot.y - hw * saPerp.y },
+			{ x: bot.x + hw * saPerp.x, y: bot.y + hw * saPerp.y },
+		];
+	});
+
+	// --- Spindle mount ---
+	// Inner radius 1" (25.4mm), outer radius 2" (50.8mm) drawing units
+	const spindleInnerR = 25.4;  // 1 inch
+	const spindleOuterR = 50.8;  // 2 inches
+
+	// Fork bottom T depends on suspension type
+	const forkBottomForSpindle = $derived(
+		suspensionType === 'telescopic' ? sliderBottomT : solidForkBottomT
+	);
+
+	// Default spindle center: on the fork offset line, 1" (25.4mm) below fork bottom
+	// so the outer 2" circle just touches the fork bottom.
+	// Then apply user offsets: spindleHeightMm along SA, spindleOffsetMm along saPerp.
+	const spindleCenter = $derived.by(() => {
+		const baseT = forkBottomForSpindle - spindleOuterR;
+		const base = forkPoint(baseT + spindleHeightMm);
+		return {
+			x: base.x + spindleOffsetMm * saPerp.x,
+			y: base.y + spindleOffsetMm * saPerp.y,
+		};
+	});
+
 	function polyPoints(corners: { x: number; y: number }[]): string {
 		return corners.map(c => `${c.x},${sy(c.y)}`).join(' ');
 	}
@@ -125,7 +256,7 @@
 	class="w-full h-full"
 	xmlns="http://www.w3.org/2000/svg"
 >
-	<!-- Steering axis (dashed yellow) - extends through SC and protrudes past top -->
+	<!-- Steering axis (dashed yellow) -->
 	<line
 		x1={saLineBottom.x}
 		y1={sy(saLineBottom.y)}
@@ -136,7 +267,34 @@
 		stroke-dasharray="{sw * 8} {sw * 4}"
 	/>
 
-	<!-- Fork offset line (dashed blue) - parallel to SA, offset by fork offset distance -->
+	<!-- Fork tubes -->
+	{#if suspensionType === 'telescopic'}
+		<!-- Telescopic fork: slider (wider, bottom layer) -->
+		<polygon
+			points={polyPoints(sliderCorners)}
+			fill="#2d3748"
+			stroke="#6b7280"
+			stroke-width={swThin}
+		/>
+
+		<!-- Telescopic fork: stanchion (narrower) -->
+		<polygon
+			points={polyPoints(stanchionCorners)}
+			fill="#4a5568"
+			stroke="#9ca3af"
+			stroke-width={swThin}
+		/>
+	{:else}
+		<!-- Solid fork leg for link types -->
+		<polygon
+			points={polyPoints(solidForkCorners)}
+			fill="#4a5568"
+			stroke="#9ca3af"
+			stroke-width={swThin}
+		/>
+	{/if}
+
+	<!-- Fork offset line (dashed blue) - on top of fork tubes -->
 	<line
 		x1={forkLineBottom.x}
 		y1={sy(forkLineBottom.y)}
@@ -147,7 +305,7 @@
 		stroke-dasharray="{sw * 8} {sw * 4}"
 	/>
 
-	<!-- Steering column polygon -->
+	<!-- Steering column polygon (on top of fork, under triple trees) -->
 	<polygon
 		points={polyPoints(scCorners)}
 		fill="#4b5563"
@@ -155,12 +313,46 @@
 		stroke-width={swThin}
 	/>
 
-	<!-- Top triple tree polygon -->
+	<!-- Top triple tree polygon (on top of fork) -->
 	<polygon
 		points={polyPoints(topTtCorners)}
 		fill="#374151"
 		stroke="#9ca3af"
 		stroke-width={swThin}
+	/>
+
+	<!-- Bottom triple tree polygon (on top of fork) -->
+	<polygon
+		points={polyPoints(bottomTtCorners)}
+		fill="#374151"
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+
+	<!-- Spindle mount: outer ring (2" radius) -->
+	<circle
+		cx={spindleCenter.x}
+		cy={sy(spindleCenter.y)}
+		r={spindleOuterR}
+		fill="none"
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+	<!-- Spindle mount: inner ring (1" radius) -->
+	<circle
+		cx={spindleCenter.x}
+		cy={sy(spindleCenter.y)}
+		r={spindleInnerR}
+		fill="none"
+		stroke="#d1d5db"
+		stroke-width={swThin}
+	/>
+	<!-- Spindle mount: center dot -->
+	<circle
+		cx={spindleCenter.x}
+		cy={sy(spindleCenter.y)}
+		r={sw * 1.5}
+		fill="#d1d5db"
 	/>
 
 	<!-- Center dot (orange) -->

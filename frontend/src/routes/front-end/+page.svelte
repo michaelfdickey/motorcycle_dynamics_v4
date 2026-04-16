@@ -10,10 +10,56 @@
 	let rakeAngleDeg = $state(25);
 	let forkOffsetMm = $state(35);
 	let forkLengthMm = $state(500);
+	let forkTravelMm = $state(120);
+	let compressionPct = $state(0);
+	let forkTubeSize = $state('41/54');
+	let invertedForks = $state(false);
 	let steeringColumnHeightMm = $state(150);
 	let steeringColumnLengthIn = $state(8);
+	let spindleOffsetMm = $state(0);
+	let spindleHeightMm = $state(0);
 	let linkLengthMm = $state(200);
 	let linkOffsetMm = $state(0);
+
+	const forkTubeSizes = [
+		{ value: '33/46', label: 'Small — 33mm / 46mm (1.30" / 1.81")' },
+		{ value: '37/50', label: 'Small — 37mm / 50mm (1.46" / 1.97")' },
+		{ value: '41/54', label: 'Mid — 41mm / 54mm (1.61" / 2.13")' },
+		{ value: '43/56', label: 'Mid — 43mm / 56mm (1.69" / 2.20")' },
+		{ value: '43/58', label: 'Liter — 43mm / 58mm (1.69" / 2.28")' },
+		{ value: '46/60', label: 'Liter — 46mm / 60mm (1.81" / 2.36")' },
+		{ value: '48/62', label: 'USD — 48mm / 62mm (1.89" / 2.44")' },
+		{ value: '50/65', label: 'USD — 50mm / 65mm (1.97" / 2.56")' },
+	];
+
+	const stanchionDiaMm = $derived(Number(forkTubeSize.split('/')[0]));
+	const sliderDiaMm = $derived(Number(forkTubeSize.split('/')[1]));
+
+	type BikePreset = 'sport' | 'touring' | 'dualsport' | 'offroad' | 'cruiser';
+	let activePreset = $state<BikePreset | null>(null);
+
+	const bikePresets: { value: BikePreset; label: string; offset: number; length: number; travel: number; rake: number; tubeSize: string; inverted: boolean }[] = [
+		{ value: 'sport',    label: 'Sport Bike',  offset: 30,  length: 500, travel: 120, rake: 24,   tubeSize: '43/56', inverted: true },
+		{ value: 'touring',  label: 'Touring',     offset: 35,  length: 580, travel: 130, rake: 27,   tubeSize: '43/56', inverted: false },
+		{ value: 'dualsport', label: 'Dual Sport', offset: 40,  length: 650, travel: 200, rake: 27.5, tubeSize: '41/54', inverted: false },
+		{ value: 'offroad',  label: 'Off Road',    offset: 22,  length: 750, travel: 300, rake: 27,   tubeSize: '48/62', inverted: true },
+		{ value: 'cruiser',  label: 'Cruiser',     offset: 40,  length: 550, travel: 130, rake: 32,   tubeSize: '41/54', inverted: false },
+	];
+
+	function applyPreset(preset: BikePreset) {
+		if (activePreset === preset) {
+			activePreset = null;
+			return;
+		}
+		activePreset = preset;
+		const p = bikePresets.find(b => b.value === preset)!;
+		forkOffsetMm = p.offset;
+		forkLengthMm = p.length;
+		forkTravelMm = p.travel;
+		rakeAngleDeg = p.rake;
+		forkTubeSize = p.tubeSize;
+		invertedForks = p.inverted;
+	}
 
 	const suspensionTypes: { value: SuspensionType; label: string }[] = [
 		{ value: 'telescopic', label: 'Telescopic Fork' },
@@ -107,6 +153,51 @@
 					</div>
 				</label>
 
+				<!-- Fork section divider -->
+				<div class="flex items-center gap-3 pt-2">
+					<div class="flex-1 border-t border-gray-700"></div>
+					<span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Fork</span>
+					<div class="flex-1 border-t border-gray-700"></div>
+				</div>
+
+				<!-- Bike preset checkboxes -->
+				<div class="flex flex-wrap gap-x-4 gap-y-1">
+					{#each bikePresets as bp}
+						<label class="flex items-center gap-1.5">
+							<input
+								type="checkbox"
+								checked={activePreset === bp.value}
+								onchange={() => applyPreset(bp.value)}
+								class="accent-orange-500"
+							/>
+							<span class="text-xs text-gray-400">{bp.label}</span>
+						</label>
+					{/each}
+				</div>
+
+				<div class="flex items-center gap-4">
+					<label class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							bind:checked={invertedForks}
+							class="accent-orange-500"
+						/>
+						<span class="text-xs text-gray-500">Inverted (USD)</span>
+					</label>
+				</div>
+
+				<label class="block">
+					<span class="text-xs text-gray-500">Fork Tube Size:</span>
+					<select
+						bind:value={forkTubeSize}
+						class="mt-1 w-full rounded-md bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-orange-500"
+					>
+						{#each forkTubeSizes as s}
+							<option value={s.value}>{s.label}</option>
+						{/each}
+					</select>
+				</label>
+
 				<label class="block">
 					<span class="text-xs text-gray-500">Fork offset (mm)</span>
 					<div class="flex items-center gap-2 mt-1">
@@ -124,7 +215,7 @@
 				</label>
 
 				<label class="block">
-					<span class="text-xs text-gray-500">Fork length (mm)</span>
+					<span class="text-xs text-gray-500">Fork length (mm) - fully extended</span>
 					<div class="flex items-center gap-2 mt-1">
 						<input
 							type="range" min="200" max="900" step="5"
@@ -138,6 +229,40 @@
 						/>
 					</div>
 				</label>
+
+				{#if suspensionType === 'telescopic'}
+					<label class="block">
+						<span class="text-xs text-gray-500">Fork travel (mm)</span>
+						<div class="flex items-center gap-2 mt-1">
+							<input
+								type="range" min="50" max="300" step="5"
+								bind:value={forkTravelMm}
+								class="flex-1 accent-orange-500"
+							/>
+							<input
+								type="number" step="5" min="20" max="400"
+								bind:value={forkTravelMm}
+								class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+							/>
+						</div>
+					</label>
+
+					<label class="block">
+						<span class="text-xs text-gray-500">Compression ({compressionPct}%)</span>
+						<div class="flex items-center gap-2 mt-1">
+							<input
+								type="range" min="0" max="100" step="1"
+								bind:value={compressionPct}
+								class="flex-1 accent-orange-500"
+							/>
+							<input
+								type="number" step="1" min="0" max="100"
+								bind:value={compressionPct}
+								class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+							/>
+						</div>
+					</label>
+				{/if}
 
 				<label class="block">
 					<span class="text-xs text-gray-500">Steering column height (mm)</span>
@@ -166,6 +291,38 @@
 						<input
 							type="number" step="0.5" min="4" max="12"
 							bind:value={steeringColumnLengthIn}
+							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+						/>
+					</div>
+				</label>
+
+				<label class="block">
+					<span class="text-xs text-gray-500">Spindle offset (mm) - perpendicular to fork</span>
+					<div class="flex items-center gap-2 mt-1">
+						<input
+							type="range" min="-101.6" max="101.6" step="1"
+							bind:value={spindleOffsetMm}
+							class="flex-1 accent-orange-500"
+						/>
+						<input
+							type="number" step="1" min="-101.6" max="101.6"
+							bind:value={spindleOffsetMm}
+							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+						/>
+					</div>
+				</label>
+
+				<label class="block">
+					<span class="text-xs text-gray-500">Spindle height offset (mm) - along fork axis</span>
+					<div class="flex items-center gap-2 mt-1">
+						<input
+							type="range" min="-101.6" max="101.6" step="1"
+							bind:value={spindleHeightMm}
+							class="flex-1 accent-orange-500"
+						/>
+						<input
+							type="number" step="1" min="-101.6" max="101.6"
+							bind:value={spindleHeightMm}
 							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
 						/>
 					</div>
@@ -243,7 +400,7 @@
 			<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Side View</h3>
 			{#if results && tireDims}
 				<div class="aspect-[4/5] w-full">
-					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} />
+					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} />
 				</div>
 			{:else}
 				<div class="flex items-center justify-center h-64 text-gray-600">

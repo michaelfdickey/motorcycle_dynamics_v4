@@ -290,7 +290,8 @@
 	// Default spindle center: on the fork offset line, 1" (25.4mm) below fork bottom
 	// so the outer 2" circle just touches the fork bottom.
 	// Then apply user offsets: spindleHeightMm along SA, spindleOffsetMm along saPerp.
-	const spindleCenter = $derived.by(() => {
+	// For link types, this is the "rest" position before compression rotation.
+	const spindleCenterRest = $derived.by(() => {
 		const baseT = forkBottomForSpindle - spindleOuterR;
 		const base = forkPoint(baseT + spindleHeightMm);
 		return {
@@ -299,14 +300,8 @@
 		};
 	});
 
-	// Shorthand for spindle center coords (used in bounds before SVG)
-	const spindleCx = $derived(spindleCenter.x);
-	const spindleCy = $derived(spindleCenter.y);
-
-	// --- Suspension mount (lower) ---
-	// Same sizing as spindle: 1" ID (12.7mm r), 2" OD (25.4mm r)
-	// Position: on fork offset line, offset by suspensionHeightMm along SA and suspensionOffsetMm along saPerp
-	const suspMountCenter = $derived.by(() => {
+	// --- Suspension mount (lower) - rest position ---
+	const suspMountCenterRest = $derived.by(() => {
 		const baseT = forkBottomForSpindle - spindleOuterR + suspensionHeightMm;
 		const base = forkPoint(baseT);
 		return {
@@ -314,6 +309,92 @@
 			y: base.y + suspensionOffsetMm * saPerp.y,
 		};
 	});
+
+	// --- Link compression rotation (leading/trailing link only) ---
+	// The link arm pivots around the fork cap center.
+	// compressionPct drives rotation: 0% = rest, 100% = max rotation.
+	// Max rotation angle is determined by shock travel geometry.
+
+	// Helper: rotate point around a pivot by angle (radians)
+	function rotateAround(
+		pt: { x: number; y: number },
+		pivot: { x: number; y: number },
+		angle: number,
+	): { x: number; y: number } {
+		const dx = pt.x - pivot.x;
+		const dy = pt.y - pivot.y;
+		const cos = Math.cos(angle);
+		const sin = Math.sin(angle);
+		return {
+			x: pivot.x + dx * cos - dy * sin,
+			y: pivot.y + dx * sin + dy * cos,
+		};
+	}
+
+	// For link types: compute max rotation from shock travel.
+	// The shock connects suspUpperMountCenter (fixed) to suspMountCenterRest (on link).
+	// When the shock shortens by forkTravelMm, the lower mount swings.
+	// We solve for the rotation angle that shortens the shock by the right amount.
+	const linkRotationAngle = $derived.by(() => {
+		if (suspensionType === 'telescopic') return 0;
+		const pivot = forkCapCenter;
+		const upperFixed = suspUpperMountCenter;
+		const lowerRest = suspMountCenterRest;
+
+		// Distance from pivot to lower mount (arm radius)
+		const armDx = lowerRest.x - pivot.x;
+		const armDy = lowerRest.y - pivot.y;
+		const armLen = Math.sqrt(armDx * armDx + armDy * armDy);
+		if (armLen < 1) return 0;
+
+		// Shock length at rest
+		const shockRestLen = Math.sqrt(
+			(upperFixed.x - lowerRest.x) ** 2 + (upperFixed.y - lowerRest.y) ** 2
+		);
+
+		// Target shock length at current compression
+		const targetShockLen = shockRestLen - forkTravelMm * compressionPct / 100;
+		if (targetShockLen < 1) return 0;
+
+		// Solve for angle: lower mount on a circle of radius armLen around pivot,
+		// find angle where distance to upperFixed = targetShockLen.
+		// Use binary search for robustness.
+		const restAngle = Math.atan2(armDy, armDx);
+
+		// Determine search direction: leading link rotates forward (positive angle = CCW),
+		// trailing link rotates backward
+		const searchDir = suspensionType === 'leading_link' ? 1 : -1;
+
+		let lo = 0, hi = Math.PI / 2; // max 90 degrees
+		for (let i = 0; i < 30; i++) {
+			const mid = (lo + hi) / 2;
+			const testAngle = restAngle + searchDir * mid;
+			const px = pivot.x + armLen * Math.cos(testAngle);
+			const py = pivot.y + armLen * Math.sin(testAngle);
+			const dist = Math.sqrt((upperFixed.x - px) ** 2 + (upperFixed.y - py) ** 2);
+			if (dist > targetShockLen) {
+				lo = mid;
+			} else {
+				hi = mid;
+			}
+		}
+		return searchDir * (lo + hi) / 2;
+	});
+
+	// Final positions: rotated for link types, unchanged for telescopic
+	const spindleCenter = $derived.by(() => {
+		if (suspensionType === 'telescopic') return spindleCenterRest;
+		return rotateAround(spindleCenterRest, forkCapCenter, linkRotationAngle);
+	});
+
+	const suspMountCenter = $derived.by(() => {
+		if (suspensionType === 'telescopic') return suspMountCenterRest;
+		return rotateAround(suspMountCenterRest, forkCapCenter, linkRotationAngle);
+	});
+
+	// Shorthand for spindle center coords (used in bounds before SVG)
+	const spindleCx = $derived(spindleCenter.x);
+	const spindleCy = $derived(spindleCenter.y);
 
 	// --- Suspension upper mount ---
 	// Same sizing: 1" ID (12.7mm r), 2" OD (25.4mm r)
@@ -388,6 +469,50 @@
 		const tx = d1 > d2 ? tx1 : tx2;
 		const ty = d1 > d2 ? ty1 : ty2;
 		return { x1: tx, y1: ty, x2: closest.x, y2: closest.y };
+	});
+
+	// --- Shock absorber body (upper wider rectangle + lower narrower rectangle) ---
+	// Direction from upper mount to lower mount
+	const shockDir = $derived.by(() => {
+		const dx = suspMountCenter.x - suspUpperMountCenter.x;
+		const dy = suspMountCenter.y - suspUpperMountCenter.y;
+		const len = Math.sqrt(dx * dx + dy * dy);
+		if (len < 0.1) return { ux: 0, uy: -1, px: 1, py: 0, len };
+		return { ux: dx / len, uy: dy / len, px: -dy / len, py: dx / len, len };
+	});
+
+	// Shock body: upper (wider) rectangle from upper mount outward
+	const shockUpperHW = 18; // half-width of upper shock body
+	const shockLowerHW = 10; // half-width of lower shock shaft
+	const shockUpperLen = $derived(shockDir.len * 0.45); // upper body is ~45% of total
+	const shockLowerLen = $derived(shockDir.len * 0.55); // lower shaft is ~55%
+
+	const shockUpperCorners = $derived.by(() => {
+		const s = shockDir;
+		const c = suspUpperMountCenter;
+		// Start at upper mount center, extend toward lower mount
+		const t0x = c.x, t0y = c.y;
+		const t1x = c.x + shockUpperLen * s.ux, t1y = c.y + shockUpperLen * s.uy;
+		return [
+			{ x: t0x + shockUpperHW * s.px, y: t0y + shockUpperHW * s.py },
+			{ x: t0x - shockUpperHW * s.px, y: t0y - shockUpperHW * s.py },
+			{ x: t1x - shockUpperHW * s.px, y: t1y - shockUpperHW * s.py },
+			{ x: t1x + shockUpperHW * s.px, y: t1y + shockUpperHW * s.py },
+		];
+	});
+
+	const shockLowerCorners = $derived.by(() => {
+		const s = shockDir;
+		const c = suspMountCenter;
+		// Start at lower mount center, extend toward upper mount
+		const t0x = c.x, t0y = c.y;
+		const t1x = c.x - shockLowerLen * s.ux, t1y = c.y - shockLowerLen * s.uy;
+		return [
+			{ x: t0x + shockLowerHW * s.px, y: t0y + shockLowerHW * s.py },
+			{ x: t0x - shockLowerHW * s.px, y: t0y - shockLowerHW * s.py },
+			{ x: t1x - shockLowerHW * s.px, y: t1y - shockLowerHW * s.py },
+			{ x: t1x + shockLowerHW * s.px, y: t1y + shockLowerHW * s.py },
+		];
 	});
 
 	// --- Fork end cap ---
@@ -757,6 +882,31 @@
 	/>
 
 	{#if suspensionType !== 'telescopic'}
+	<!-- Shock absorber: center dotted line connecting upper and lower mounts -->
+	<line
+		x1={suspUpperMountCenter.x}
+		y1={sy(suspUpperMountCenter.y)}
+		x2={suspMountCenter.x}
+		y2={sy(suspMountCenter.y)}
+		stroke="#fdba74"
+		stroke-width={swThin}
+		stroke-dasharray="4,4"
+	/>
+	<!-- Shock absorber: upper body (wider rectangle) -->
+	<polygon
+		points={polyPoints(shockUpperCorners)}
+		fill="none"
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+	<!-- Shock absorber: lower shaft (narrower rectangle) -->
+	<polygon
+		points={polyPoints(shockLowerCorners)}
+		fill="none"
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+
 	<!-- Suspension mount: outer ring (2" OD = 25.4mm radius) -->
 	<circle
 		cx={suspMountCenter.x}

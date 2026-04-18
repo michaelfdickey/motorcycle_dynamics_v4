@@ -367,6 +367,25 @@
 							/>
 						</div>
 					</label>
+				{/if}
+
+				{#if isLinkType}
+					<label class="block">
+						<span class="text-xs text-gray-500">Shock travel (mm)</span>
+						<div class="flex items-center gap-2 mt-1">
+							<input
+								type="range" min="20" max="200" step="5"
+								bind:value={forkTravelMm}
+								class="flex-1 accent-orange-500"
+							/>
+							<input
+								type="number" step="5" min="10" max="300"
+								bind:value={forkTravelMm}
+								class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+							/>
+						</div>
+					</label>
+				{/if}
 
 					<label class="block">
 						<span class="text-xs text-gray-500">Compression ({compressionPct}%)</span>
@@ -383,7 +402,6 @@
 							/>
 						</div>
 					</label>
-				{/if}
 
 				<!-- Steering Column section divider -->
 				<div class="flex items-center gap-3 pt-2">

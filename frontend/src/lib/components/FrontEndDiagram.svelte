@@ -2,7 +2,7 @@
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number } = $props();
 
 	// Flip y for SVG
 	function sy(y: number): number { return -y; }
@@ -13,10 +13,12 @@
 		const scHalf = steeringColumnLengthMm / 2 + 80;
 		const cx = results.steeringColumnCenter.x;
 		const cy = results.steeringColumnCenter.y;
-		const minX = cx - scHalf - pad;
-		const maxX = cx + scHalf + pad;
-		const minY = -pad;
-		const maxY = cy + scHalf + pad;
+		const tireR = tire.outerRadiusMm;
+		// Expand bounds to always include the full wheel
+		const minX = Math.min(cx - scHalf, spindleCx - tireR) - pad;
+		const maxX = Math.max(cx + scHalf, spindleCx + tireR) + pad;
+		const minY = Math.min(-pad, spindleCy - tireR - pad);
+		const maxY = Math.max(cy + scHalf, spindleCy + tireR) + pad;
 		return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
 	});
 
@@ -69,7 +71,9 @@
 	function onWheel(e: WheelEvent) {
 		if (!e.shiftKey) return;
 		e.preventDefault();
-		const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+		// macOS swaps deltaY to deltaX when shift is held
+		const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+		const factor = delta < 0 ? 1.1 : 1 / 1.1;
 		zoom = Math.max(0.1, Math.min(20, zoom * factor));
 	}
 
@@ -274,9 +278,9 @@
 	});
 
 	// --- Spindle mount ---
-	// Inner radius 1" (25.4mm), outer radius 2" (50.8mm) drawing units
-	const spindleInnerR = 25.4;  // 1 inch
-	const spindleOuterR = 50.8;  // 2 inches
+	// Inner: 1" OD (12.7mm radius), Outer: 2" OD (25.4mm radius)
+	const spindleInnerR = 12.7;   // 1" diameter = 0.5" radius
+	const spindleOuterR = 25.4;   // 2" diameter = 1" radius
 
 	// Fork bottom T depends on suspension type
 	const forkBottomForSpindle = $derived(
@@ -293,6 +297,97 @@
 			x: base.x + spindleOffsetMm * saPerp.x,
 			y: base.y + spindleOffsetMm * saPerp.y,
 		};
+	});
+
+	// Shorthand for spindle center coords (used in bounds before SVG)
+	const spindleCx = $derived(spindleCenter.x);
+	const spindleCy = $derived(spindleCenter.y);
+
+	// --- Suspension mount (lower) ---
+	// Same sizing as spindle: 1" ID (12.7mm r), 2" OD (25.4mm r)
+	// Position: on fork offset line, offset by suspensionHeightMm along SA and suspensionOffsetMm along saPerp
+	const suspMountCenter = $derived.by(() => {
+		const baseT = forkBottomForSpindle - spindleOuterR + suspensionHeightMm;
+		const base = forkPoint(baseT);
+		return {
+			x: base.x + suspensionOffsetMm * saPerp.x,
+			y: base.y + suspensionOffsetMm * saPerp.y,
+		};
+	});
+
+	// --- Suspension upper mount ---
+	// Same sizing: 1" ID (12.7mm r), 2" OD (25.4mm r)
+	// Position: starts at bottom of bottom triple tree, offset along fork axis by suspUpperMountHeightMm,
+	// and perpendicular by suspensionOffsetMm (same as lower mount)
+	const suspUpperMountCenter = $derived.by(() => {
+		const baseT = lowerTtOuterT + suspUpperMountHeightMm;
+		const base = forkPoint(baseT);
+		return {
+			x: base.x + suspensionOffsetMm * saPerp.x,
+			y: base.y + suspensionOffsetMm * saPerp.y,
+		};
+	});
+
+	// Tangent line on upper mount perpendicular to fork axis
+	// Front edge of circle (away from TTs, toward ground), extends to the fork tube
+	const suspUpperTangentLine = $derived.by(() => {
+		const c = suspUpperMountCenter;
+		const r = spindleOuterR;
+		// Tangent point at front of circle (-saDir = away from TTs)
+		const tx = c.x - r * saDir.x;
+		const ty = c.y - r * saDir.y;
+		// Fork center at the same position along SA
+		const baseT = lowerTtOuterT + suspUpperMountHeightMm - r;
+		const forkCenter = forkPoint(baseT);
+		// Fork edge closest to the mount (half tube width along saPerp toward mount)
+		const hw = upperTubeWidth / 2;
+		const sign = suspensionOffsetMm >= 0 ? 1 : -1;
+		const forkEdgeX = forkCenter.x + sign * hw * saPerp.x;
+		const forkEdgeY = forkCenter.y + sign * hw * saPerp.y;
+		return {
+			x1: tx,
+			y1: ty,
+			x2: forkEdgeX,
+			y2: forkEdgeY,
+		};
+	});
+
+	// Tangent line from upper mount circle to the closest corner of the bottom TT
+	const suspUpperTtTangentLine = $derived.by(() => {
+		const c = suspUpperMountCenter;
+		const r = spindleOuterR;
+		// Find the closest bottom TT corner
+		let closest = bottomTtCorners[0];
+		let minDist = Infinity;
+		for (const corner of bottomTtCorners) {
+			const dx = corner.x - c.x;
+			const dy = corner.y - c.y;
+			const dist = Math.sqrt(dx * dx + dy * dy);
+			if (dist < minDist) {
+				minDist = dist;
+				closest = corner;
+			}
+		}
+		const d = minDist;
+		if (d <= r) return null; // corner inside circle
+		// Proper tangent point: angle from center-to-corner line, offset by acos(r/d)
+		const ux = (closest.x - c.x) / d;
+		const uy = (closest.y - c.y) / d;
+		const cosTheta = r / d;
+		const sinTheta = Math.sqrt(1 - cosTheta * cosTheta);
+		// Two tangent points; pick the one on the TT side (toward fork)
+		// Rotate unit vector by -theta for the tangent point closest to the fork
+		const tx1 = c.x + r * (ux * cosTheta + uy * sinTheta);
+		const ty1 = c.y + r * (uy * cosTheta - ux * sinTheta);
+		const tx2 = c.x + r * (ux * cosTheta - uy * sinTheta);
+		const ty2 = c.y + r * (uy * cosTheta + ux * sinTheta);
+		// Pick whichever tangent point is farther from the fork axis
+		const forkBase = forkPoint(lowerTtOuterT);
+		const d1 = (tx1 - forkBase.x) ** 2 + (ty1 - forkBase.y) ** 2;
+		const d2 = (tx2 - forkBase.x) ** 2 + (ty2 - forkBase.y) ** 2;
+		const tx = d1 > d2 ? tx1 : tx2;
+		const ty = d1 > d2 ? ty1 : ty2;
+		return { x1: tx, y1: ty, x2: closest.x, y2: closest.y };
 	});
 
 	// --- Fork end cap ---
@@ -333,69 +428,180 @@
 		return { topLeft, topRight, botLeft, botRight };
 	});
 
-	// --- Tangent lines from fork cap circle to spindle inner circle ---
-	// Both circles have the same radius (12.7mm for cap, 25.4mm for spindle inner).
-	// For equal-radius circles, external tangent lines are parallel to the line
-	// connecting centers. The tangent touch points are offset perpendicular to that line.
-	const tangentLines = $derived.by(() => {
-		const dx = spindleCenter.x - forkCapCenter.x;
-		const dy = spindleCenter.y - forkCapCenter.y;
+	// --- External tangent line helper ---
+	// Computes external tangent touch points between two circles of given radii
+	function externalTangents(
+		c1: { x: number; y: number }, r1: number,
+		c2: { x: number; y: number }, r2: number,
+	): { top1: { x: number; y: number }; bot1: { x: number; y: number }; top2: { x: number; y: number }; bot2: { x: number; y: number } } | null {
+		const dx = c2.x - c1.x;
+		const dy = c2.y - c1.y;
 		const dist = Math.sqrt(dx * dx + dy * dy);
 		if (dist < 0.01) return null;
-
-		// Direction from cap center to spindle center
 		const ux = dx / dist;
 		const uy = dy / dist;
-
-		// Perpendicular
 		const px = uy;
 		const py = -ux;
-
-		// For external tangents on same-side: offset both circles by +r or -r along perp
-		// Cap circle (forkCapR) and spindle inner circle (spindleInnerR)
-		// External tangent: the tangent points are at perpendicular offset from center
-		// For circles of different radii r1, r2, external tangent angle:
-		// sin(alpha) = (r1 - r2) / dist  (for external tangents where lines don't cross between)
-		// Actually for external tangent: sin(alpha) = (r1 + r2) / dist would be internal
-		// External tangent with same-side: sin(alpha) = (r2 - r1) / dist
-		// But we want same-side tangents (top of cap to top of spindle)
-
-		const r1 = forkCapR;
-		const r2 = spindleInnerR;
-
-		// For external tangent (not crossing between circles):
-		// The tangent line touches circle 1 at angle and circle 2 at same angle
-		// sin(theta) = (r1 - r2) / dist
 		const sinTheta = (r1 - r2) / dist;
 		const cosTheta = Math.sqrt(Math.max(0, 1 - sinTheta * sinTheta));
+		return {
+			top1: { x: c1.x + r1 * (px * cosTheta + ux * sinTheta), y: c1.y + r1 * (py * cosTheta + uy * sinTheta) },
+			bot1: { x: c1.x - r1 * (px * cosTheta - ux * sinTheta), y: c1.y - r1 * (py * cosTheta - uy * sinTheta) },
+			top2: { x: c2.x + r2 * (px * cosTheta + ux * sinTheta), y: c2.y + r2 * (py * cosTheta + uy * sinTheta) },
+			bot2: { x: c2.x - r2 * (px * cosTheta - ux * sinTheta), y: c2.y - r2 * (py * cosTheta - uy * sinTheta) },
+		};
+	}
 
-		// Tangent touch points on cap circle (r1)
-		// Rotated perpendicular by theta
-		const capTop = {
-			x: forkCapCenter.x + r1 * (px * cosTheta + ux * sinTheta),
-			y: forkCapCenter.y + r1 * (py * cosTheta + uy * sinTheta),
-		};
-		const capBot = {
-			x: forkCapCenter.x - r1 * (px * cosTheta - ux * sinTheta),
-			y: forkCapCenter.y - r1 * (py * cosTheta - uy * sinTheta),
-		};
+	// Tangent lines: fork cap → spindle (outer circles)
+	const tangentCapSpindle = $derived(externalTangents(forkCapCenter, forkCapR, spindleCenter, spindleOuterR));
 
-		// Tangent touch points on spindle inner circle (r2)
-		const spindleTop = {
-			x: spindleCenter.x + r2 * (px * cosTheta + ux * sinTheta),
-			y: spindleCenter.y + r2 * (py * cosTheta + uy * sinTheta),
-		};
-		const spindleBot = {
-			x: spindleCenter.x - r2 * (px * cosTheta - ux * sinTheta),
-			y: spindleCenter.y - r2 * (py * cosTheta - uy * sinTheta),
-		};
+	// Tangent lines: fork cap → suspension mount (only for link types)
+	const tangentCapSusp = $derived(
+		suspensionType !== 'telescopic'
+			? externalTangents(forkCapCenter, forkCapR, suspMountCenter, spindleOuterR)
+			: null
+	);
 
-		return { capTop, capBot, spindleTop, spindleBot };
+	// Tangent lines: spindle → suspension mount (only for link types)
+	const tangentSpindleSusp = $derived(
+		suspensionType !== 'telescopic'
+			? externalTangents(spindleCenter, spindleOuterR, suspMountCenter, spindleOuterR)
+			: null
+	);
+
+	// --- Filter out interior tangent lines ---
+	// A tangent line is "interior" if it passes through another circle or crosses another tangent line.
+
+	// Check if a line segment's midpoint is within radius of a circle center
+	function segmentIntersectsCircle(
+		p1: { x: number; y: number }, p2: { x: number; y: number },
+		c: { x: number; y: number }, r: number,
+	): boolean {
+		// Closest point on segment to circle center
+		const dx = p2.x - p1.x;
+		const dy = p2.y - p1.y;
+		const lenSq = dx * dx + dy * dy;
+		if (lenSq < 0.01) return false;
+		const t = Math.max(0, Math.min(1, ((c.x - p1.x) * dx + (c.y - p1.y) * dy) / lenSq));
+		const closestX = p1.x + t * dx;
+		const closestY = p1.y + t * dy;
+		const distSq = (closestX - c.x) ** 2 + (closestY - c.y) ** 2;
+		return distSq < r * r;
+	}
+
+	// Check if two line segments intersect (excluding shared endpoints)
+	function segmentsIntersect(
+		a1: { x: number; y: number }, a2: { x: number; y: number },
+		b1: { x: number; y: number }, b2: { x: number; y: number },
+	): boolean {
+		const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+		const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+		const cross = d1x * d2y - d1y * d2x;
+		if (Math.abs(cross) < 1e-9) return false;
+		const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / cross;
+		const u = ((b1.x - a1.x) * d1y - (b1.y - a1.y) * d1x) / cross;
+		return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99;
+	}
+
+	// Collect all circles and all candidate tangent line pairs, then filter
+	type TangentPair = { top: { p1: { x: number; y: number }; p2: { x: number; y: number } }; bot: { p1: { x: number; y: number }; p2: { x: number; y: number } } };
+
+	const filteredTangentLines = $derived.by(() => {
+		// All circles to check against (center + radius)
+		// Indices: 0=forkCap, 1=spindle, 2=suspMount(lower)
+		const circles: { c: { x: number; y: number }; r: number }[] = [
+			{ c: forkCapCenter, r: forkCapR },
+			{ c: spindleCenter, r: spindleOuterR },
+		];
+		if (suspensionType !== 'telescopic') {
+			circles.push({ c: suspMountCenter, r: spindleOuterR });
+		}
+
+		// All candidate tangent segments
+		const candidates: { p1: { x: number; y: number }; p2: { x: number; y: number }; skipCircles: number[] }[] = [];
+
+		if (tangentCapSpindle) {
+			candidates.push({ p1: tangentCapSpindle.top1, p2: tangentCapSpindle.top2, skipCircles: [0, 1] });
+			candidates.push({ p1: tangentCapSpindle.bot1, p2: tangentCapSpindle.bot2, skipCircles: [0, 1] });
+		}
+		if (tangentCapSusp) {
+			candidates.push({ p1: tangentCapSusp.top1, p2: tangentCapSusp.top2, skipCircles: [0, 2] });
+			candidates.push({ p1: tangentCapSusp.bot1, p2: tangentCapSusp.bot2, skipCircles: [0, 2] });
+		}
+		if (tangentSpindleSusp) {
+			candidates.push({ p1: tangentSpindleSusp.top1, p2: tangentSpindleSusp.top2, skipCircles: [1, 2] });
+			candidates.push({ p1: tangentSpindleSusp.bot1, p2: tangentSpindleSusp.bot2, skipCircles: [1, 2] });
+		}
+
+		// Filter: remove if segment intersects a circle it's not tangent to,
+		// or if it intersects another surviving segment
+		const surviving: { p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
+
+		for (const cand of candidates) {
+			let dominated = false;
+
+			// Check against circles it's not tangent to
+			for (let i = 0; i < circles.length; i++) {
+				if (cand.skipCircles.includes(i)) continue;
+				if (segmentIntersectsCircle(cand.p1, cand.p2, circles[i].c, circles[i].r)) {
+					dominated = true;
+					break;
+				}
+			}
+
+			if (!dominated) {
+				surviving.push({ p1: cand.p1, p2: cand.p2 });
+			}
+		}
+
+		// Second pass: remove if any surviving segment crosses another
+		const final: { p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
+		for (let i = 0; i < surviving.length; i++) {
+			let crosses = false;
+			for (let j = 0; j < surviving.length; j++) {
+				if (i === j) continue;
+				if (segmentsIntersect(surviving[i].p1, surviving[i].p2, surviving[j].p1, surviving[j].p2)) {
+					crosses = true;
+					break;
+				}
+			}
+			if (!crosses) {
+				final.push(surviving[i]);
+			}
+		}
+
+		return final;
 	});
 
 	function polyPoints(corners: { x: number; y: number }[]): string {
 		return corners.map(c => `${c.x},${sy(c.y)}`).join(' ');
 	}
+
+	// --- Trail measurement ---
+	// Ground Y is bottom of tire
+	const groundY = $derived(spindleCenter.y - tire.outerRadiusMm);
+
+	// Contact patch: directly below spindle center on ground
+	const contactPatchX = $derived(spindleCenter.x);
+
+	// Steering axis ground intersection: compute directly from SA line and ground level
+	// SA line passes through scCenter along saDir direction. Find t where y = groundY:
+	// scCy + t * saDir.y = groundY  =>  t = (groundY - scCy) / saDir.y
+	const saGroundX = $derived.by(() => {
+		if (Math.abs(saDir.y) < 1e-9) return scCx; // vertical SA edge case
+		const t = (groundY - scCy) / saDir.y;
+		return scCx + t * saDir.x;
+	});
+
+	// Trail: actual measured distance between contact patch and SA ground intersection
+	const trailMm = $derived(Math.abs(saGroundX - contactPatchX));
+	const trailIn = $derived(trailMm / 25.4);
+
+	// Crosshair size
+	const crossSize = $derived(sw * 6);
+
+	// Dimension line Y position (below ground)
+	const dimY = $derived(groundY - crossSize * 2.5);
 </script>
 
 <svg
@@ -490,7 +696,7 @@
 		y1={sy(forkCapLines.topLeft.y)}
 		x2={forkCapLines.botLeft.x}
 		y2={sy(forkCapLines.botLeft.y)}
-		stroke="#9ca3af"
+		stroke="#c4b5d4"
 		stroke-width={swThin}
 	/>
 	<line
@@ -498,7 +704,7 @@
 		y1={sy(forkCapLines.topRight.y)}
 		x2={forkCapLines.botRight.x}
 		y2={sy(forkCapLines.botRight.y)}
-		stroke="#9ca3af"
+		stroke="#c4b5d4"
 		stroke-width={swThin}
 	/>
 
@@ -508,46 +714,38 @@
 		cy={sy(forkCapCenter.y)}
 		r={forkCapR}
 		fill="none"
-		stroke="#9ca3af"
+		stroke="#c4b5d4"
 		stroke-width={swThin}
 	/>
 
-	<!-- Tangent lines from fork cap to spindle mount -->
-	{#if tangentLines}
+	<!-- Filtered tangent lines (only outer hull, no interior lines) -->
+	{#each filteredTangentLines as seg}
 		<line
-			x1={tangentLines.capTop.x}
-			y1={sy(tangentLines.capTop.y)}
-			x2={tangentLines.spindleTop.x}
-			y2={sy(tangentLines.spindleTop.y)}
-			stroke="#9ca3af"
+			x1={seg.p1.x}
+			y1={sy(seg.p1.y)}
+			x2={seg.p2.x}
+			y2={sy(seg.p2.y)}
+			stroke="#c4b5d4"
 			stroke-width={swThin}
 		/>
-		<line
-			x1={tangentLines.capBot.x}
-			y1={sy(tangentLines.capBot.y)}
-			x2={tangentLines.spindleBot.x}
-			y2={sy(tangentLines.spindleBot.y)}
-			stroke="#9ca3af"
-			stroke-width={swThin}
-		/>
-	{/if}
+	{/each}
 
-	<!-- Spindle mount: outer ring (2" radius) -->
+	<!-- Spindle mount: 2" OD circle (25.4mm radius) -->
 	<circle
 		cx={spindleCenter.x}
 		cy={sy(spindleCenter.y)}
 		r={spindleOuterR}
 		fill="none"
-		stroke="#9ca3af"
+		stroke="#c4b5d4"
 		stroke-width={swThin}
 	/>
-	<!-- Spindle mount: inner ring (1" radius) -->
+	<!-- Spindle mount: 1" OD circle (12.7mm radius) -->
 	<circle
 		cx={spindleCenter.x}
 		cy={sy(spindleCenter.y)}
 		r={spindleInnerR}
 		fill="none"
-		stroke="#d1d5db"
+		stroke="#d8cce5"
 		stroke-width={swThin}
 	/>
 	<!-- Spindle mount: center dot -->
@@ -555,8 +753,82 @@
 		cx={spindleCenter.x}
 		cy={sy(spindleCenter.y)}
 		r={sw * 1.5}
-		fill="#d1d5db"
+		fill="#d8cce5"
 	/>
+
+	{#if suspensionType !== 'telescopic'}
+	<!-- Suspension mount: outer ring (2" OD = 25.4mm radius) -->
+	<circle
+		cx={suspMountCenter.x}
+		cy={sy(suspMountCenter.y)}
+		r={spindleOuterR}
+		fill="none"
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+	<!-- Suspension mount: inner ring (1" OD = 12.7mm radius) -->
+	<circle
+		cx={suspMountCenter.x}
+		cy={sy(suspMountCenter.y)}
+		r={spindleInnerR}
+		fill="none"
+		stroke="#d8cce5"
+		stroke-width={swThin}
+	/>
+	<!-- Suspension mount: center dot -->
+	<circle
+		cx={suspMountCenter.x}
+		cy={sy(suspMountCenter.y)}
+		r={sw * 1.5}
+		fill="#d8cce5"
+	/>
+
+	<!-- Suspension upper mount: outer ring (2" OD = 25.4mm radius) -->
+	<circle
+		cx={suspUpperMountCenter.x}
+		cy={sy(suspUpperMountCenter.y)}
+		r={spindleOuterR}
+		fill="none"
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+	<!-- Suspension upper mount: inner ring (1" OD = 12.7mm radius) -->
+	<circle
+		cx={suspUpperMountCenter.x}
+		cy={sy(suspUpperMountCenter.y)}
+		r={spindleInnerR}
+		fill="none"
+		stroke="#d8cce5"
+		stroke-width={swThin}
+	/>
+	<!-- Suspension upper mount: center dot -->
+	<circle
+		cx={suspUpperMountCenter.x}
+		cy={sy(suspUpperMountCenter.y)}
+		r={sw * 1.5}
+		fill="#d8cce5"
+	/>
+	<!-- Suspension upper mount: tangent line perpendicular to fork -->
+	<line
+		x1={suspUpperTangentLine.x1}
+		y1={sy(suspUpperTangentLine.y1)}
+		x2={suspUpperTangentLine.x2}
+		y2={sy(suspUpperTangentLine.y2)}
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+	<!-- Suspension upper mount: tangent line to closest bottom TT corner -->
+	{#if suspUpperTtTangentLine}
+	<line
+		x1={suspUpperTtTangentLine.x1}
+		y1={sy(suspUpperTtTangentLine.y1)}
+		x2={suspUpperTtTangentLine.x2}
+		y2={sy(suspUpperTtTangentLine.y2)}
+		stroke="#c4b5d4"
+		stroke-width={swThin}
+	/>
+	{/if}
+	{/if}
 
 	<!-- Center dot (orange) -->
 	<circle
@@ -565,4 +837,109 @@
 		r={sw * 2}
 		fill="#f97316"
 	/>
+
+	<!-- Tire: outer circle -->
+	<circle
+		cx={spindleCenter.x}
+		cy={sy(spindleCenter.y)}
+		r={tire.outerRadiusMm}
+		fill="none"
+		stroke="#6b7280"
+		stroke-width={sw}
+	/>
+
+	<!-- Rim: inner circle -->
+	<circle
+		cx={spindleCenter.x}
+		cy={sy(spindleCenter.y)}
+		r={tire.rimRadiusMm}
+		fill="none"
+		stroke="#9ca3af"
+		stroke-width={swThin}
+	/>
+
+	<!-- Ground line: horizontal, tangent to tire bottom -->
+	<line
+		x1={bounds.minX}
+		y1={sy(groundY)}
+		x2={bounds.maxX}
+		y2={sy(groundY)}
+		stroke="#a3a3a3"
+		stroke-width={sw}
+	/>
+
+	<!-- Contact patch crosshair (green) -->
+	<line
+		x1={contactPatchX - crossSize}
+		y1={sy(groundY)}
+		x2={contactPatchX + crossSize}
+		y2={sy(groundY)}
+		stroke="#22c55e"
+		stroke-width={swThin}
+	/>
+	<line
+		x1={contactPatchX}
+		y1={sy(groundY - crossSize)}
+		x2={contactPatchX}
+		y2={sy(groundY + crossSize)}
+		stroke="#22c55e"
+		stroke-width={swThin}
+	/>
+
+	<!-- Steering axis ground intersection crosshair (red) -->
+	<line
+		x1={saGroundX - crossSize}
+		y1={sy(groundY)}
+		x2={saGroundX + crossSize}
+		y2={sy(groundY)}
+		stroke="#ef4444"
+		stroke-width={swThin}
+	/>
+	<line
+		x1={saGroundX}
+		y1={sy(groundY - crossSize)}
+		x2={saGroundX}
+		y2={sy(groundY + crossSize)}
+		stroke="#ef4444"
+		stroke-width={swThin}
+	/>
+
+	<!-- Trail dimension line -->
+	<!-- Horizontal line between the two points -->
+	<line
+		x1={contactPatchX}
+		y1={sy(dimY)}
+		x2={saGroundX}
+		y2={sy(dimY)}
+		stroke="#fbbf24"
+		stroke-width={swThin}
+	/>
+	<!-- Left tick -->
+	<line
+		x1={contactPatchX}
+		y1={sy(dimY - sw * 2)}
+		x2={contactPatchX}
+		y2={sy(dimY + sw * 2)}
+		stroke="#fbbf24"
+		stroke-width={swThin}
+	/>
+	<!-- Right tick -->
+	<line
+		x1={saGroundX}
+		y1={sy(dimY - sw * 2)}
+		x2={saGroundX}
+		y2={sy(dimY + sw * 2)}
+		stroke="#fbbf24"
+		stroke-width={swThin}
+	/>
+	<!-- Trail label -->
+	<text
+		x={(contactPatchX + saGroundX) / 2}
+		y={sy(dimY + sw * 3)}
+		text-anchor="middle"
+		fill="#fbbf24"
+		font-size={sw * 4}
+	>
+		{trailMm.toFixed(1)} mm ({trailIn.toFixed(2)}")
+	</text>
 </svg>

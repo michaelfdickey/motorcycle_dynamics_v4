@@ -2,6 +2,80 @@
 	import { parseTireDesignation, computeTireDimensions } from '$lib/tire';
 	import { computeFrontEnd, type SuspensionType, type FrontEndInputs } from '$lib/frontEndGeometry';
 	import FrontEndDiagram from '$lib/components/FrontEndDiagram.svelte';
+	import { browser } from '$app/environment';
+	import { untrack } from 'svelte';
+
+	// ── Persistence helpers ──
+
+	const STORAGE_PREFIX = 'mototelos_frontEnd_';
+
+	type DesignState = {
+		tireDesignation: string;
+		rakeAngleDeg: number;
+		forkOffsetMm: number;
+		forkLengthMm: number;
+		forkTravelMm: number;
+		compressionPct: number;
+		forkTubeSize: string;
+		invertedForks: boolean;
+		steeringColumnHeightMm: number;
+		steeringColumnLengthIn: number;
+		spindleOffsetMm: number;
+		spindleHeightMm: number;
+		suspensionOffsetMm: number;
+		suspensionHeightMm: number;
+		suspUpperMountHeightMm: number;
+		linkLengthMm: number;
+		linkOffsetMm: number;
+	};
+
+	function storageKey(type: SuspensionType): string {
+		return STORAGE_PREFIX + type;
+	}
+
+	function loadDesign(type: SuspensionType): DesignState | null {
+		if (!browser) return null;
+		try {
+			const raw = localStorage.getItem(storageKey(type));
+			return raw ? JSON.parse(raw) : null;
+		} catch { return null; }
+	}
+
+	function saveDesign(type: SuspensionType, state: DesignState): void {
+		if (!browser) return;
+		localStorage.setItem(storageKey(type), JSON.stringify(state));
+	}
+
+	function currentDesignState(): DesignState {
+		return {
+			tireDesignation, rakeAngleDeg, forkOffsetMm, forkLengthMm,
+			forkTravelMm, compressionPct, forkTubeSize, invertedForks,
+			steeringColumnHeightMm, steeringColumnLengthIn,
+			spindleOffsetMm, spindleHeightMm,
+			suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm,
+			linkLengthMm, linkOffsetMm,
+		};
+	}
+
+	function applyDesignState(s: DesignState): void {
+		tireDesignation = s.tireDesignation;
+		rakeAngleDeg = s.rakeAngleDeg;
+		forkOffsetMm = s.forkOffsetMm;
+		forkLengthMm = s.forkLengthMm;
+		forkTravelMm = s.forkTravelMm;
+		compressionPct = s.compressionPct;
+		forkTubeSize = s.forkTubeSize;
+		invertedForks = s.invertedForks;
+		steeringColumnHeightMm = s.steeringColumnHeightMm;
+		steeringColumnLengthIn = s.steeringColumnLengthIn;
+		spindleOffsetMm = s.spindleOffsetMm;
+		spindleHeightMm = s.spindleHeightMm;
+		suspensionOffsetMm = s.suspensionOffsetMm;
+		suspensionHeightMm = s.suspensionHeightMm;
+		suspUpperMountHeightMm = s.suspUpperMountHeightMm ?? 0;
+		linkLengthMm = s.linkLengthMm;
+		linkOffsetMm = s.linkOffsetMm;
+	}
 
 	// ── State ──
 
@@ -18,6 +92,9 @@
 	let steeringColumnLengthIn = $state(8);
 	let spindleOffsetMm = $state(0);
 	let spindleHeightMm = $state(0);
+	let suspensionOffsetMm = $state(0);
+	let suspensionHeightMm = $state(50);
+	let suspUpperMountHeightMm = $state(0);
 	let linkLengthMm = $state(200);
 	let linkOffsetMm = $state(0);
 
@@ -66,6 +143,50 @@
 		{ value: 'leading_link', label: 'Leading Link' },
 		{ value: 'trailing_link', label: 'Trailing Link' },
 	];
+
+	// ── Persistence: load on mount, save on change, swap on type switch ──
+
+	let prevSuspType = $state<SuspensionType | null>(null);
+	let initialized = $state(false);
+
+	// Load saved state for the initial suspension type on mount
+	$effect(() => {
+		if (!browser || initialized) return;
+		// Also load last-used suspension type
+		const lastType = localStorage.getItem(STORAGE_PREFIX + 'lastType') as SuspensionType | null;
+		if (lastType && ['telescopic', 'leading_link', 'trailing_link'].includes(lastType)) {
+			suspensionType = lastType;
+		}
+		const saved = loadDesign(suspensionType);
+		if (saved) applyDesignState(saved);
+		prevSuspType = suspensionType;
+		initialized = true;
+	});
+
+	// When suspension type changes, save old and load new
+	$effect(() => {
+		if (!initialized) return;
+		const current = suspensionType; // track this
+		untrack(() => {
+			if (prevSuspType !== null && prevSuspType !== current) {
+				// Save the design we're leaving
+				saveDesign(prevSuspType, currentDesignState());
+				// Load the design for the new type (if any)
+				const saved = loadDesign(current);
+				if (saved) applyDesignState(saved);
+			}
+			prevSuspType = current;
+			if (browser) localStorage.setItem(STORAGE_PREFIX + 'lastType', current);
+		});
+	});
+
+	// Auto-save current design on any parameter change (debounced via $effect)
+	$effect(() => {
+		if (!initialized) return;
+		const state = currentDesignState();
+		// Reading all fields above makes this effect track them
+		saveDesign(suspensionType, state);
+	});
 
 	// ── Derived ──
 
@@ -303,10 +424,10 @@
 					</div>
 				</label>
 
-				<!-- Spindle Mount section divider -->
+				<!-- Spindle Mount / Link section divider -->
 				<div class="flex items-center gap-3 pt-2">
 					<div class="flex-1 border-t border-gray-700"></div>
-					<span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Spindle Mount</span>
+					<span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{suspensionType === 'leading_link' ? 'Leading Link' : suspensionType === 'trailing_link' ? 'Trailing Link' : 'Spindle Mount'}</span>
 					<div class="flex-1 border-t border-gray-700"></div>
 				</div>
 
@@ -341,6 +462,63 @@
 						/>
 					</div>
 				</label>
+
+				{#if isLinkType}
+				<label class="block">
+					<span class="text-xs text-gray-500">Suspension offset (mm) - perpendicular to fork</span>
+					<div class="flex items-center gap-2 mt-1">
+						<input
+							type="range" min="-150" max="150" step="1"
+							bind:value={suspensionOffsetMm}
+							class="flex-1 accent-orange-500"
+						/>
+						<input
+							type="number" step="1" min="-150" max="150"
+							bind:value={suspensionOffsetMm}
+							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+						/>
+					</div>
+				</label>
+
+				<label class="block">
+					<span class="text-xs text-gray-500">Suspension height offset (mm) - along fork axis</span>
+					<div class="flex items-center gap-2 mt-1">
+						<input
+							type="range" min="-101.6" max="101.6" step="1"
+							bind:value={suspensionHeightMm}
+							class="flex-1 accent-orange-500"
+						/>
+						<input
+							type="number" step="1" min="-101.6" max="101.6"
+							bind:value={suspensionHeightMm}
+							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+						/>
+					</div>
+				</label>
+
+				<!-- Suspension Upper Mount section divider -->
+				<div class="flex items-center gap-2 pt-2">
+					<div class="h-px flex-1 bg-gray-700"></div>
+					<span class="text-[10px] text-gray-500 uppercase tracking-widest">Suspension Upper Mount</span>
+					<div class="h-px flex-1 bg-gray-700"></div>
+				</div>
+
+				<label class="block">
+					<span class="text-xs text-gray-500">Upper mount height offset (mm) - along fork axis from bottom TT</span>
+					<div class="flex items-center gap-2 mt-1">
+						<input
+							type="range" min="-250" max="250" step="1"
+							bind:value={suspUpperMountHeightMm}
+							class="flex-1 accent-orange-500"
+						/>
+						<input
+							type="number" step="1" min="-250" max="250"
+							bind:value={suspUpperMountHeightMm}
+							class="w-20 rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-sm text-gray-100 text-right"
+						/>
+					</div>
+				</label>
+				{/if}
 
 				{#if isLinkType}
 					<label class="block">
@@ -414,7 +592,7 @@
 			<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Side View</h3>
 			{#if results && tireDims}
 				<div class="aspect-[4/5] w-full">
-					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} />
+					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} />
 				</div>
 			{:else}
 				<div class="flex items-center justify-center h-64 text-gray-600">

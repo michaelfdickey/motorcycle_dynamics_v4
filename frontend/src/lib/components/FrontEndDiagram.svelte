@@ -37,11 +37,35 @@
 	let panStartPanY = $state(0);
 	let svgEl: SVGSVGElement | undefined = $state();
 
+	// --- POV Focus ---
+	type PovOption = 'wheel' | 'steering' | 'forkpivot' | 'contact';
+	let povFocus = $state<PovOption>('steering');
+	let povMenuOpen = $state(false);
+
+	const povOptions: { value: PovOption; label: string }[] = [
+		{ value: 'wheel', label: 'Wheel Center' },
+		{ value: 'steering', label: 'Steering Column Center' },
+		{ value: 'forkpivot', label: 'Fork End Pivot' },
+		{ value: 'contact', label: 'Ground Contact Patch' },
+	];
+
+	// The POV center point in geometry coordinates
+	const povCenter = $derived.by(() => {
+		switch (povFocus) {
+			case 'wheel': return { x: spindleCx, y: spindleCy };
+			case 'steering': return { x: scCx, y: scCy };
+			case 'forkpivot': return { x: forkCapCenter.x, y: forkCapCenter.y };
+			case 'contact': return { x: contactPatchX, y: groundY };
+			default: return { x: scCx, y: scCy };
+		}
+	});
+
 	const viewBox = $derived.by(() => {
 		const w = bounds.width / zoom;
 		const h = bounds.height / zoom;
-		const cx = bounds.minX + bounds.width / 2 - panX;
-		const cy = -bounds.maxY + bounds.height / 2 - panY;
+		// Center on the POV focus point, then apply pan offset
+		const cx = povCenter.x - panX;
+		const cy = -povCenter.y - panY;
 		return `${cx - w / 2} ${cy - h / 2} ${w} ${h}`;
 	});
 
@@ -358,12 +382,21 @@
 
 		// Solve for angle: lower mount on a circle of radius armLen around pivot,
 		// find angle where distance to upperFixed = targetShockLen.
-		// Use binary search for robustness.
 		const restAngle = Math.atan2(armDy, armDx);
 
-		// Determine search direction: leading link rotates forward (positive angle = CCW),
-		// trailing link rotates backward
-		const searchDir = suspensionType === 'leading_link' ? 1 : -1;
+		// Test a small positive and negative rotation to find which direction
+		// shortens the shock (brings lower mount closer to upper mount)
+		const testDelta = 0.01;
+		const pxPos = pivot.x + armLen * Math.cos(restAngle + testDelta);
+		const pyPos = pivot.y + armLen * Math.sin(restAngle + testDelta);
+		const distPos = Math.sqrt((upperFixed.x - pxPos) ** 2 + (upperFixed.y - pyPos) ** 2);
+
+		const pxNeg = pivot.x + armLen * Math.cos(restAngle - testDelta);
+		const pyNeg = pivot.y + armLen * Math.sin(restAngle - testDelta);
+		const distNeg = Math.sqrt((upperFixed.x - pxNeg) ** 2 + (upperFixed.y - pyNeg) ** 2);
+
+		// Pick the direction that shortens the shock
+		const searchDir = distPos < distNeg ? 1 : -1;
 
 		let lo = 0, hi = Math.PI / 2; // max 90 degrees
 		for (let i = 0; i < 30; i++) {
@@ -729,6 +762,37 @@
 	const dimY = $derived(groundY - crossSize * 2.5);
 </script>
 
+<div class="relative w-full h-full">
+<!-- POV focus button -->
+<div class="absolute top-2 right-2 z-10">
+	<button
+		type="button"
+		class="flex items-center gap-1 rounded bg-gray-800/80 border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700/90 transition-colors"
+		onclick={() => povMenuOpen = !povMenuOpen}
+	>
+		<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+			<path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+		</svg>
+		<span>{povOptions.find(o => o.value === povFocus)?.label}</span>
+	</button>
+	{#if povMenuOpen}
+	<div class="absolute top-full right-0 mt-1 rounded bg-gray-800 border border-gray-700 shadow-lg overflow-hidden">
+		{#each povOptions as opt}
+		<button
+			type="button"
+			class="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors"
+			class:text-orange-400={povFocus === opt.value}
+			class:text-gray-300={povFocus !== opt.value}
+			onclick={() => { povFocus = opt.value; povMenuOpen = false; }}
+		>
+			{opt.label}
+		</button>
+		{/each}
+	</div>
+	{/if}
+</div>
+
 <svg
 	bind:this={svgEl}
 	viewBox={viewBox}
@@ -1093,3 +1157,4 @@
 		{trailMm.toFixed(1)} mm ({trailIn.toFixed(2)}")
 	</text>
 </svg>
+</div>

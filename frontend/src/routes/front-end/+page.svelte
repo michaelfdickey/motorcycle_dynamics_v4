@@ -572,6 +572,22 @@
 					</label>
 				{/if}
 			</div>
+		</div>
+
+		<!-- ── Right column: Diagram + Results below ── -->
+		<div class="space-y-4">
+			<div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
+				<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Side View</h3>
+				{#if results && tireDims}
+					<div class="aspect-[4/3] w-full">
+						<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} />
+					</div>
+				{:else}
+					<div class="flex items-center justify-center h-64 text-gray-600">
+						Enter valid parameters to see diagram
+					</div>
+				{/if}
+			</div>
 
 			<!-- Calculated results -->
 			{#if results && tireDims}
@@ -601,20 +617,6 @@
 							<div class="text-gray-100 font-mono text-right">{linkLengthMm.toFixed(0)} mm</div>
 						{/if}
 					</div>
-				</div>
-			{/if}
-		</div>
-
-		<!-- ── Right column: Diagram ── -->
-		<div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
-			<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Side View</h3>
-			{#if results && tireDims}
-				<div class="aspect-[4/5] w-full">
-					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} />
-				</div>
-			{:else}
-				<div class="flex items-center justify-center h-64 text-gray-600">
-					Enter valid parameters to see diagram
 				</div>
 			{/if}
 		</div>

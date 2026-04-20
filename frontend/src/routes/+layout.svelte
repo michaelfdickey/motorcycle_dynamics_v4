@@ -7,7 +7,7 @@
 		{ label: 'Home', href: '/' },
 		{ label: 'Front End', href: '/front-end' },
 		{ label: 'Suspension', href: '/suspension' },
-		{ label: 'Frame FEA', href: '/frame-fea' },
+		{ label: 'Frame', href: '/frame' },
 		{ label: 'Kinematics', href: '/kinematics' },
 		{ label: 'Geometry', href: '/geometry' },
 		{ label: 'Aero / CFD', href: '/aero-cfd' },
@@ -40,7 +40,7 @@
 					<a
 						href={tab.href}
 						class="whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg transition-colors
-							{page.url.pathname === tab.href
+						{page.url.pathname === tab.href || (tab.href !== '/' && page.url.pathname.startsWith(tab.href))
 								? 'bg-gray-800 text-orange-500 border-t border-x border-orange-500/40'
 								: 'text-gray-400 hover:text-gray-100 hover:bg-gray-800/50'}"
 					>

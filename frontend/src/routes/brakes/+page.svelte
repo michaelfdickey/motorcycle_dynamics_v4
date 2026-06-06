@@ -8,6 +8,12 @@
 		type VehicleParams,
 		type BrakingResults,
 	} from '$lib/braking';
+	import {
+		saveVehicleDesign,
+		loadVehicleDesign,
+		getLastFileName,
+		type VehicleDesign,
+	} from '$lib/vehicleStore';
 	import { browser } from '$app/environment';
 
 	// ── Unit conversion helpers ──
@@ -24,6 +30,34 @@
 	function lbfToN(lbf: number): number { return lbf * N_PER_LBF; }
 	function kphToMph(kph: number): number { return kph / KPH_PER_MPH; }
 	function mphToKph(mph: number): number { return mph * KPH_PER_MPH; }
+
+	// ── Vehicle Save/Load ──
+	let vehicleName = $state(browser ? getLastFileName() : 'my_bike');
+
+	function handleSave() {
+		const design: VehicleDesign = {
+			name: vehicleName,
+			version: 1,
+			savedAt: new Date().toISOString(),
+			brakes: {
+				frontBrake: { ...frontBrake },
+				rearBrake: { ...rearBrake },
+				vehicle: { ...vehicle },
+			},
+		};
+		saveVehicleDesign(design);
+	}
+
+	async function handleLoad() {
+		const design = await loadVehicleDesign();
+		if (!design) return;
+		vehicleName = design.name;
+		if (design.brakes) {
+			frontBrake = { ...defaultFrontBrake(), ...design.brakes.frontBrake } as BrakeParams;
+			rearBrake = { ...defaultRearBrake(), ...design.brakes.rearBrake } as BrakeParams;
+			vehicle = { ...defaultVehicleParams(), ...design.brakes.vehicle } as VehicleParams;
+		}
+	}
 
 	// ── Brake Parameters ──
 	let frontBrake = $state<BrakeParams>(defaultFrontBrake());
@@ -70,6 +104,105 @@
 	// Whether brakes have been applied during this sim run
 	let brakesApplied = $state(false);
 
+	// Braking-phase metrics (from brake application to stop)
+	let peakDecelG = $state(0);
+	let brakingDistanceM = $state(0);
+	let brakingTimeS = $state(0);
+
+	// ── Thermal load calculation ──
+	// KE = 0.5 * m * v², distributed by braking force ratio per rotor
+	let frontRotorKJ = $derived.by(() => {
+		if (!results) return 0;
+		const totalForce = results.frontBrakeForceN + results.rearBrakeForceN;
+		if (totalForce <= 0) return 0;
+		const ke = 0.5 * vehicle.totalMassKg * (initialSpeedKph / 3.6) ** 2;
+		const frontShare = results.frontBrakeForceN / totalForce;
+		const rotors = frontBrake.dualSided ? 2 : 1;
+		return (ke * frontShare / rotors) / 1000; // kJ per rotor
+	});
+	let rearRotorKJ = $derived.by(() => {
+		if (!results) return 0;
+		const totalForce = results.frontBrakeForceN + results.rearBrakeForceN;
+		if (totalForce <= 0) return 0;
+		const ke = 0.5 * vehicle.totalMassKg * (initialSpeedKph / 3.6) ** 2;
+		const rearShare = results.rearBrakeForceN / totalForce;
+		const rotors = rearBrake.dualSided ? 2 : 1;
+		return (ke * rearShare / rotors) / 1000; // kJ per rotor
+	});
+
+	// ── LLM Feedback ──
+	let feedbackLoading = $state(false);
+	let feedbackText = $state('');
+	let feedbackVisible = $state(false);
+
+	async function requestFeedback() {
+		if (!browser) return;
+		const apiKey = localStorage.getItem('openai_api_key') || '';
+		const model = localStorage.getItem('openai_model') || 'gpt-4o';
+		if (!apiKey) {
+			feedbackText = 'No API key configured. Go to Settings to enter your OpenAI API key.';
+			feedbackVisible = true;
+			return;
+		}
+
+		const snapshot = {
+			vehicle,
+			frontBrake,
+			rearBrake,
+			brakeMode,
+			frontLeverForceN,
+			rearPedalForceN,
+			initialSpeedKph,
+			linked,
+			linkRatio,
+			results,
+			peakDecelG,
+			brakingDistanceM,
+			brakingTimeS,
+			frontRotorKJ,
+			rearRotorKJ,
+		};
+
+		const prompt = `You are an expert motorcycle dynamics engineer. Analyze this braking system configuration for a recumbent motorcycle prototype and provide concise feedback on:
+1. Whether the deceleration and stopping distance are realistic
+2. Brake balance (front vs rear contribution)
+3. Thermal concerns (energy per rotor)
+4. Tire grip assumptions — are they realistic for the intended use?
+5. Any safety concerns or recommendations
+
+Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
+
+		feedbackLoading = true;
+		feedbackVisible = true;
+		feedbackText = 'Requesting analysis...';
+
+		try {
+			const res = await fetch('https://api.openai.com/v1/chat/completions', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify({
+					model,
+					messages: [{ role: 'user', content: prompt }],
+					max_tokens: 1000,
+				}),
+			});
+			if (!res.ok) {
+				const err = await res.text();
+				feedbackText = `API error (${res.status}): ${err}`;
+			} else {
+				const data = await res.json();
+				feedbackText = data.choices?.[0]?.message?.content || 'No response received.';
+			}
+		} catch (e: unknown) {
+			feedbackText = `Request failed: ${e instanceof Error ? e.message : String(e)}`;
+		} finally {
+			feedbackLoading = false;
+		}
+	}
+
 	// ── Computed static results ──
 	$effect(() => {
 		const effectiveFront = (brakeMode === 'rear') ? 0 : frontLeverForceN;
@@ -111,6 +244,9 @@
 	function applyBrakes() {
 		if (!simRunning) return;
 		brakesApplied = true;
+		peakDecelG = 0;
+		brakingDistanceM = 0;
+		brakingTimeS = 0;
 	}
 
 	function tick(timestamp: number) {
@@ -200,6 +336,13 @@
 		simDistanceM += distStep;
 		simTimeS += dt;
 
+		// Track braking-phase metrics
+		if (brakesApplied) {
+			brakingDistanceM += distStep;
+			brakingTimeS += dt;
+			if (simDecelG > peakDecelG) peakDecelG = simDecelG;
+		}
+
 		// Wheel rotation: distance / radius → radians → degrees
 		// Negative because wheels roll clockwise (top moves backward) for forward travel
 		const frontRadM = vehicle.frontTireRadiusMm / 1000;
@@ -233,6 +376,9 @@
 		simPitchDeg = 0;
 		simPitchTarget = 0;
 		simPitchVel = 0;
+		peakDecelG = 0;
+		brakingDistanceM = 0;
+		brakingTimeS = 0;
 		frontWheelAngleDeg = 0;
 		rearWheelAngleDeg = 0;
 		roadOffset = 0;
@@ -293,18 +439,40 @@
 	let roadMarkers = $derived(getRoadMarkers());
 </script>
 
-<div class="space-y-6">
-	<h2 class="text-2xl font-bold">Braking System</h2>
-	<p class="text-gray-400 text-sm">
-		Define brake parameters, simulate real-time braking dynamics with weight transfer and tire grip limits.
-	</p>
+<div class="space-y-4">
+	<!-- Header row: title + description + vehicle save/load -->
+	<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+		<h2 class="text-2xl font-bold whitespace-nowrap">Braking System</h2>
+		<p class="text-gray-400 text-sm">
+			Define brake parameters, simulate real-time braking dynamics with weight transfer and tire grip limits.
+		</p>
+		<div class="ml-auto flex items-center gap-2">
+			<input type="text" bind:value={vehicleName}
+				class="w-36 px-2 py-1 text-sm rounded bg-gray-800 border border-gray-700 text-gray-200 focus:border-orange-500 focus:outline-none"
+				placeholder="vehicle name" />
+			<button onclick={handleSave}
+				class="px-3 py-1 text-xs font-medium rounded bg-orange-600 hover:bg-orange-500 text-white transition-colors">
+				Save
+			</button>
+			<button onclick={handleLoad}
+				class="px-3 py-1 text-xs font-medium rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+				Load
+			</button>
+		</div>
+	</div>
 
 	<div class="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
 		<!-- LEFT: Diagram + Simulation -->
 		<div class="space-y-4">
 			<!-- Side-view schematic -->
 			<section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
-				<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Side View — Braking Dynamics</h3>
+				<div class="flex items-center justify-between mb-3">
+					<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Side View — Braking Dynamics</h3>
+					<button onclick={requestFeedback} disabled={feedbackLoading}
+						class="px-3 py-1 text-xs font-medium rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50">
+						{feedbackLoading ? '⏳ Analyzing...' : '💡 Feedback'}
+					</button>
+				</div>
 				<svg viewBox="0 0 {svgWidth} {svgHeight}" class="w-full h-auto bg-gray-950 rounded-lg border border-gray-800">
 					<defs>
 						<marker id="arrowGreen" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
@@ -403,20 +571,33 @@
 						Ø{rearBrake.discDiameterMm} / {rearBrake.numberOfPots}-pot
 					</text>
 
+					<!-- Thermal load per rotor (above wheels) -->
+					{#if results && (results.frontBrakeForceN + results.rearBrakeForceN) > 0}
+						<title>Peak thermal energy absorbed per rotor during a full stop from {initialSpeedKph} km/h</title>
+						<text x={frontWheelX} y={groundY - frontWheelR * 2 - 22}
+							fill="#fbbf24" font-size="9" text-anchor="middle" class="cursor-help">
+							{frontBrake.dualSided ? `L: ${frontRotorKJ.toFixed(0)} kJ  R: ${frontRotorKJ.toFixed(0)} kJ` : `Rotor: ${frontRotorKJ.toFixed(0)} kJ`}
+						</text>
+						<text x={rearWheelX} y={groundY - rearWheelR * 2 - 22}
+							fill="#fbbf24" font-size="9" text-anchor="middle" class="cursor-help">
+							{rearBrake.dualSided ? `L: ${rearRotorKJ.toFixed(0)} kJ  R: ${rearRotorKJ.toFixed(0)} kJ` : `Rotor: ${rearRotorKJ.toFixed(0)} kJ`}
+						</text>
+					{/if}
+
 					<!-- HUD overlay -->
 					{#if simRunning || simTimeS > 0}
-						<rect x="8" y="8" width="230" height={simFrontSlip || simRearSlip ? 105 : 85} rx="4" fill="#000" opacity="0.6" />
+						<rect x="8" y="8" width="250" height={simFrontSlip || simRearSlip ? 105 : 85} rx="4" fill="#000" opacity="0.6" />
 						<text x="15" y="26" fill="#e5e7eb" font-size="12" font-family="monospace">
 							Speed: {(simSpeedMs * 3.6).toFixed(1)} km/h ({(simSpeedMs * 2.237).toFixed(1)} mph)
 						</text>
 						<text x="15" y="43" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Decel: {simDecelG.toFixed(2)} G
+							Peak Decel: {peakDecelG.toFixed(2)} G
 						</text>
 						<text x="15" y="60" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Dist:  {simDistanceM.toFixed(1)} m ({(simDistanceM * 3.281).toFixed(1)} ft)
+							Stop Dist: {brakingDistanceM.toFixed(1)} m ({(brakingDistanceM * 3.281).toFixed(1)} ft)
 						</text>
 						<text x="15" y="77" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Time:  {simTimeS.toFixed(2)} s
+							Brake Time: {brakingTimeS.toFixed(2)} s
 						</text>
 						{#if simFrontSlip}
 							<text x="15" y="96" fill="#ef4444" font-size="11" font-weight="bold">⚠ FRONT LOCKUP</text>
@@ -617,14 +798,14 @@
 							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
 					</div>
 					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Front tire μ</span>
-						<input type="number" value={vehicle.frontTireGrip} oninput={(e) => { vehicle.frontTireGrip = +e.currentTarget.value; }} min="0.5" max="2" step="0.05"
+						<span class="text-xs cursor-help" title="Tire coefficient of friction (grip).&#10;Typical values:&#10;• Street touring tire: 0.7–0.9&#10;• Sport street tire: 0.9–1.1&#10;• Track-day DOT tire: 1.1–1.3&#10;• Full race slick (warm): 1.3–1.6&#10;• Wet conditions: 0.4–0.6">Front tire μ ⓘ</span>
+						<input type="number" value={vehicle.frontTireGrip} onchange={(e) => { vehicle.frontTireGrip = +e.currentTarget.value; }} min="0.3" max="2" step="0.01"
 							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
 						<span class="text-center text-[10px] text-gray-600">—</span>
 					</div>
 					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Rear tire μ</span>
-						<input type="number" value={vehicle.rearTireGrip} oninput={(e) => { vehicle.rearTireGrip = +e.currentTarget.value; }} min="0.5" max="2" step="0.05"
+						<span class="text-xs cursor-help" title="Tire coefficient of friction (grip).&#10;Typical values:&#10;• Street touring tire: 0.7–0.9&#10;• Sport street tire: 0.9–1.1&#10;• Track-day DOT tire: 1.1–1.3&#10;• Full race slick (warm): 1.3–1.6&#10;• Wet conditions: 0.4–0.6">Rear tire μ ⓘ</span>
+						<input type="number" value={vehicle.rearTireGrip} onchange={(e) => { vehicle.rearTireGrip = +e.currentTarget.value; }} min="0.3" max="2" step="0.01"
 							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
 						<span class="text-center text-[10px] text-gray-600">—</span>
 					</div>
@@ -741,3 +922,22 @@
 		</div>
 	</div>
 </div>
+
+<!-- Feedback Popup -->
+{#if feedbackVisible}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={() => { feedbackVisible = false; }}>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="bg-gray-900 border border-gray-700 rounded-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col shadow-2xl"
+			onclick={(e) => e.stopPropagation()}>
+			<div class="flex items-center justify-between px-5 py-3 border-b border-gray-700">
+				<h3 class="text-sm font-semibold text-indigo-300 uppercase tracking-wide">AI Braking Analysis</h3>
+				<button onclick={() => { feedbackVisible = false; }}
+					class="text-gray-400 hover:text-white text-lg leading-none">&times;</button>
+			</div>
+			<div class="p-5 overflow-y-auto text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+				{feedbackText}
+			</div>
+		</div>
+	</div>
+{/if}

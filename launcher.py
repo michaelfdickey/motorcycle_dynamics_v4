@@ -24,6 +24,41 @@ BACKEND_PID_FILE = os.path.join(ROOT_DIR, ".backend.pid")
 FRONTEND_PID_FILE = os.path.join(ROOT_DIR, ".frontend.pid")
 
 IS_WINDOWS = platform.system() == "Windows"
+MIN_PYTHON = (3, 10)
+
+
+def _find_suitable_python():
+    """Find a Python >= MIN_PYTHON for creating the venv.
+
+    On Windows, tries the 'py' launcher first (picks newest installed).
+    Falls back to sys.executable.
+    """
+    if IS_WINDOWS:
+        # Try the Windows Python Launcher which finds the best installed version
+        try:
+            result = subprocess.run(
+                ["py", "-3", "--version"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                # Parse version from "Python 3.x.y"
+                ver_str = result.stdout.strip().split()[1]
+                parts = tuple(int(x) for x in ver_str.split(".")[:2])
+                if parts >= MIN_PYTHON:
+                    return ["py", "-3"]
+        except FileNotFoundError:
+            pass
+
+    if sys.version_info >= MIN_PYTHON:
+        return [sys.executable]
+
+    sys.exit(
+        f"ERROR: Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ is required "
+        f"(you are running {sys.version_info.major}.{sys.version_info.minor} "
+        f"from {sys.executable}).\n"
+        f"Install a newer Python and re-run this script with it,\n"
+        f"or ensure the 'py' launcher is installed (comes with python.org builds)."
+    )
 
 
 def _wait_for_port(port, timeout=15):
@@ -123,9 +158,16 @@ def start(frontend_port, backend_port):
     venv_dir = os.path.join(BACKEND_DIR, ".venv")
     if not os.path.isdir(venv_dir):
         print("Creating Python virtual environment...")
-        subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+        py_cmd = _find_suitable_python()
+        subprocess.run(py_cmd + ["-m", "venv", venv_dir], check=True)
 
     python = get_venv_python()
+
+    # Upgrade pip to avoid resolution failures with old bundled pip
+    subprocess.run(
+        [python, "-m", "pip", "install", "-q", "--upgrade", "pip"],
+        check=True,
+    )
 
     # Install deps
     subprocess.run(
@@ -151,14 +193,29 @@ def start(frontend_port, backend_port):
 
     # ── Frontend setup ──
     print("Setting up frontend...")
+    npm_cmd = "npm.cmd" if IS_WINDOWS else "npm"
+    node_cmd = "node" if not IS_WINDOWS else "node.exe"
+
+    # Check Node.js version
+    try:
+        node_ver_out = subprocess.run(
+            [node_cmd, "--version"], capture_output=True, text=True
+        ).stdout.strip()  # e.g. "v18.17.0"
+        node_ver = tuple(int(x) for x in node_ver_out.lstrip("v").split(".")[:2])
+        if node_ver < (18, 13):
+            sys.exit(
+                f"ERROR: Node.js >= 18.13 is required (found {node_ver_out}).\n"
+                f"Download a current version from https://nodejs.org/"
+            )
+    except FileNotFoundError:
+        sys.exit("ERROR: Node.js not found. Install from https://nodejs.org/")
+
     if not os.path.isdir(os.path.join(FRONTEND_DIR, "node_modules")):
         print("Installing npm dependencies...")
-        npm_cmd = "npm.cmd" if IS_WINDOWS else "npm"
         subprocess.run([npm_cmd, "install"], cwd=FRONTEND_DIR, check=True)
 
     # Start frontend
     print(f"Starting frontend on http://localhost:{frontend_port} ...")
-    npm_cmd = "npm.cmd" if IS_WINDOWS else "npm"
     frontend_env = os.environ.copy()
     frontend_env["BACKEND_PORT"] = str(backend_port)
     frontend_proc = subprocess.Popen(

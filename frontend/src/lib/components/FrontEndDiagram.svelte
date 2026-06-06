@@ -2,7 +2,10 @@
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right' }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right' } = $props();
+
+	// Mirror transform for left-side view
+	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
 
 	// Flip y for SVG
 	function sy(y: number): number { return -y; }
@@ -315,7 +318,19 @@
 	// so the outer 2" circle just touches the fork bottom.
 	// Then apply user offsets: spindleHeightMm along SA, spindleOffsetMm along saPerp.
 	// For link types, this is the "rest" position before compression rotation.
+	// For link types: position at linkLengthMm from fork cap center (the pivot).
 	const spindleCenterRest = $derived.by(() => {
+		if (suspensionType !== 'telescopic') {
+			// Link types: spindle is at linkLengthMm from the fork cap center
+			// Direction: for leading link, forward (+saPerp); for trailing link, backward (-saPerp)
+			// linkOffsetMm shifts along the fork axis (saDir)
+			const linkDir = suspensionType === 'leading_link' ? 1 : -1;
+			const cap = forkCapCenter;
+			return {
+				x: cap.x + linkDir * linkLengthMm * saPerp.x + linkOffsetMm * (-saDir.x) + spindleOffsetMm * saPerp.x + spindleHeightMm * (-saDir.x),
+				y: cap.y + linkDir * linkLengthMm * saPerp.y + linkOffsetMm * (-saDir.y) + spindleOffsetMm * saPerp.y + spindleHeightMm * (-saDir.y),
+			};
+		}
 		const baseT = forkBottomForSpindle - spindleOuterR;
 		const base = forkPoint(baseT + spindleHeightMm);
 		return {
@@ -432,13 +447,14 @@
 	// --- Suspension upper mount ---
 	// Same sizing: 1" ID (12.7mm r), 2" OD (25.4mm r)
 	// Position: starts at bottom of bottom triple tree, offset along fork axis by suspUpperMountHeightMm,
-	// and perpendicular by suspensionOffsetMm (same as lower mount)
+	// and perpendicular by suspUpperMountOffsetMm (independent from lower mount)
 	const suspUpperMountCenter = $derived.by(() => {
 		const baseT = lowerTtOuterT + suspUpperMountHeightMm;
 		const base = forkPoint(baseT);
+		const perpOffset = suspUpperMountOffsetMm !== 0 ? suspUpperMountOffsetMm : suspensionOffsetMm;
 		return {
-			x: base.x + suspensionOffsetMm * saPerp.x,
-			y: base.y + suspensionOffsetMm * saPerp.y,
+			x: base.x + perpOffset * saPerp.x,
+			y: base.y + perpOffset * saPerp.y,
 		};
 	});
 
@@ -455,7 +471,8 @@
 		const forkCenter = forkPoint(baseT);
 		// Fork edge closest to the mount (half tube width along saPerp toward mount)
 		const hw = upperTubeWidth / 2;
-		const sign = suspensionOffsetMm >= 0 ? 1 : -1;
+		const perpOffset = suspUpperMountOffsetMm !== 0 ? suspUpperMountOffsetMm : suspensionOffsetMm;
+		const sign = perpOffset >= 0 ? 1 : -1;
 		const forkEdgeX = forkCenter.x + sign * hw * saPerp.x;
 		const forkEdgeY = forkCenter.y + sign * hw * saPerp.y;
 		return {
@@ -806,6 +823,7 @@
 	onpointerleave={onPointerUp}
 	onwheel={onWheel}
 >
+<g transform={mirrorTransform}>
 	<!-- Steering axis (dashed yellow) -->
 	<line
 		x1={saLineBottom.x}
@@ -1156,5 +1174,6 @@
 	>
 		{trailMm.toFixed(1)} mm ({trailIn.toFixed(2)}")
 	</text>
+</g>
 </svg>
 </div>

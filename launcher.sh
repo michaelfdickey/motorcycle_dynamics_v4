@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── Mototelos Motorcycle Dynamics — Launcher ──────────────────────────────────
 # Launches the backend (FastAPI) and frontend (SvelteKit) dev servers.
-# If already running, kills existing processes and restarts.
+# Compatible with Local Hoster (accepts -p/-b port flags and --stop).
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
@@ -12,6 +12,36 @@ BACKEND_PORT=8000
 FRONTEND_PORT=5173
 BACKEND_PID_FILE="$PROJECT_DIR/.backend.pid"
 FRONTEND_PID_FILE="$PROJECT_DIR/.frontend.pid"
+
+# ── Parse arguments from Local Hoster ─────────────────────────────────────────
+
+# Handle --stop flag
+if [[ "${1:-}" == "--stop" ]]; then
+    echo "Stopping servers..."
+    if [[ -f "$BACKEND_PID_FILE" ]]; then
+        pid=$(<"$BACKEND_PID_FILE")
+        kill "$pid" 2>/dev/null || true
+        rm -f "$BACKEND_PID_FILE"
+    fi
+    if [[ -f "$FRONTEND_PID_FILE" ]]; then
+        pid=$(<"$FRONTEND_PID_FILE")
+        kill "$pid" 2>/dev/null || true
+        rm -f "$FRONTEND_PID_FILE"
+    fi
+    # Kill by port as fallback
+    lsof -ti :"$FRONTEND_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
+    lsof -ti :"$BACKEND_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
+    echo "Stopped."
+    exit 0
+fi
+
+# Parse -p (frontend port) and -b (backend port) flags
+while getopts "p:b:" opt; do
+    case $opt in
+        p) FRONTEND_PORT="$OPTARG" ;;
+        b) BACKEND_PORT="$OPTARG" ;;
+    esac
+done
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -92,10 +122,20 @@ pip install -q -r "$BACKEND_DIR/requirements.txt"
 # Start backend
 echo "Starting backend on http://localhost:$BACKEND_PORT ..."
 cd "$BACKEND_DIR"
-uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload &
+uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
 cd "$PROJECT_DIR"
+
+# Wait for backend to be reachable
+echo "Waiting for backend to start..."
+for i in $(seq 1 30); do
+    if curl -s "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
+        echo "Backend ready."
+        break
+    fi
+    sleep 0.5
+done
 
 # ── Frontend setup ────────────────────────────────────────────────────────────
 

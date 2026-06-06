@@ -38,6 +38,7 @@
 	let savedVehicles = $state<{ name: string }[]>([]);
 	let saveStatus = $state<'' | 'saving' | 'saved' | 'error'>('');
 	let loadModalVisible = $state(false);
+	let viewSide = $state<'right' | 'left'>('right');
 
 	async function refreshVehicleList() {
 		savedVehicles = await listVehicles();
@@ -98,6 +99,60 @@
 	let linked = $state(false);
 	let linkRatio = $state(0.7);
 	let initialSpeedKph = $state(100);
+
+	// ── Session persistence (survive tab switches) ──
+	const BRAKES_STORAGE_KEY = 'mototelos_brakes_session';
+
+	function saveBrakesSession() {
+		if (!browser) return;
+		const session = {
+			frontBrake: { ...frontBrake },
+			rearBrake: { ...rearBrake },
+			vehicle: { ...vehicle },
+			frontLeverForceN,
+			rearPedalForceN,
+			linked,
+			linkRatio,
+			initialSpeedKph,
+			vehicleName,
+			viewSide,
+		};
+		localStorage.setItem(BRAKES_STORAGE_KEY, JSON.stringify(session));
+	}
+
+	function restoreBrakesSession() {
+		if (!browser) return;
+		try {
+			const raw = localStorage.getItem(BRAKES_STORAGE_KEY);
+			if (!raw) return;
+			const s = JSON.parse(raw);
+			if (s.frontBrake) frontBrake = { ...defaultFrontBrake(), ...s.frontBrake };
+			if (s.rearBrake) rearBrake = { ...defaultRearBrake(), ...s.rearBrake };
+			if (s.vehicle) vehicle = { ...defaultVehicleParams(), ...s.vehicle };
+			if (s.frontLeverForceN != null) frontLeverForceN = s.frontLeverForceN;
+			if (s.rearPedalForceN != null) rearPedalForceN = s.rearPedalForceN;
+			if (s.linked != null) linked = s.linked;
+			if (s.linkRatio != null) linkRatio = s.linkRatio;
+			if (s.initialSpeedKph != null) initialSpeedKph = s.initialSpeedKph;
+			if (s.vehicleName) vehicleName = s.vehicleName;
+			if (s.viewSide) viewSide = s.viewSide;
+		} catch { /* ignore parse errors */ }
+	}
+
+	// Restore on mount
+	restoreBrakesSession();
+
+	// Auto-save on changes
+	$effect(() => {
+		// Read all properties to subscribe to deep changes
+		JSON.stringify(frontBrake);
+		JSON.stringify(rearBrake);
+		JSON.stringify(vehicle);
+		void frontLeverForceN; void rearPedalForceN;
+		void linked; void linkRatio; void initialSpeedKph;
+		void vehicleName; void viewSide;
+		saveBrakesSession();
+	});
 
 	// ── Real-time simulation state ──
 	let results = $state<BrakingResults | null>(null);
@@ -372,14 +427,15 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		}
 
 		// Wheel rotation: distance / radius → radians → degrees
-		// Negative because wheels roll clockwise (top moves backward) for forward travel
+		// Direction depends on view side: right view = counter-clockwise (top moves left), left view = clockwise (top moves right)
+		const dirMul = viewSide === 'right' ? 1 : -1;
 		const frontRadM = vehicle.frontTireRadiusMm / 1000;
 		const rearRadM = vehicle.rearTireRadiusMm / 1000;
-		frontWheelAngleDeg -= (distStep / frontRadM) * (180 / Math.PI);
-		rearWheelAngleDeg -= (distStep / rearRadM) * (180 / Math.PI);
+		frontWheelAngleDeg += dirMul * (distStep / frontRadM) * (180 / Math.PI);
+		rearWheelAngleDeg += dirMul * (distStep / rearRadM) * (180 / Math.PI);
 
-		// Road offset for motion markers — negate so markers scroll right (ground moves right relative to rightward-traveling bike's visual)
-		roadOffset = (roadOffset - distStep * scale * 1000) % roadMarkerSpacing;
+		// Road offset for motion markers — direction depends on view side
+		roadOffset = (roadOffset + dirMul * distStep * scale * 1000) % roadMarkerSpacing;
 		if (roadOffset < 0) roadOffset += roadMarkerSpacing;
 
 		animationId = requestAnimationFrame(tick);
@@ -434,13 +490,26 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 
 	// Derived positions — center the bike horizontally
 	let bikeWidthPx = $derived(mmToPx(vehicle.wheelbaseMm));
-	let frontWheelX = $derived((svgWidth - bikeWidthPx) / 2);
-	let rearWheelX = $derived(frontWheelX + bikeWidthPx);
+	// Right side view: front wheel on right (bike faces right). Left side view: front wheel on left.
+	let frontWheelX = $derived(
+		viewSide === 'right'
+			? (svgWidth + bikeWidthPx) / 2
+			: (svgWidth - bikeWidthPx) / 2
+	);
+	let rearWheelX = $derived(
+		viewSide === 'right'
+			? frontWheelX - bikeWidthPx
+			: frontWheelX + bikeWidthPx
+	);
 	let frontWheelR = $derived(mmToPx(vehicle.frontTireRadiusMm));
 	let rearWheelR = $derived(mmToPx(vehicle.rearTireRadiusMm));
 	let frontDiscR = $derived(mmToPx(frontBrake.discDiameterMm / 2));
 	let rearDiscR = $derived(mmToPx(rearBrake.discDiameterMm / 2));
-	let cogX = $derived(frontWheelX + mmToPx(vehicle.wheelbaseMm * (1 - vehicle.cogPositionPct / 100)));
+	let cogX = $derived(
+		viewSide === 'right'
+			? frontWheelX - mmToPx(vehicle.wheelbaseMm * (1 - vehicle.cogPositionPct / 100))
+			: frontWheelX + mmToPx(vehicle.wheelbaseMm * (1 - vehicle.cogPositionPct / 100))
+	);
 	let cogY = $derived(groundY - mmToPx(vehicle.cogHeightMm));
 
 	// Generate spoke path data for a wheel
@@ -501,7 +570,13 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			<!-- Side-view schematic -->
 			<section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
 				<div class="flex items-center justify-between mb-3">
-					<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Side View — Braking Dynamics</h3>
+					<select
+						bind:value={viewSide}
+						class="text-sm font-semibold uppercase tracking-wide bg-gray-800 border border-gray-700 text-gray-500 rounded px-2 py-1 focus:outline-none focus:border-orange-500"
+					>
+						<option value="right">Right Side View - Braking Dynamics</option>
+						<option value="left">Left Side View - Braking Dynamics</option>
+					</select>
 					<button onclick={requestFeedback} disabled={feedbackLoading}
 						class="px-3 py-1 text-xs font-medium rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50">
 						{feedbackLoading ? '⏳ Analyzing...' : '💡 Feedback'}
@@ -538,7 +613,7 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					<!-- Front disc rotor -->
 					<circle cx={frontWheelX} cy={groundY - frontWheelR} r={frontDiscR}
 						fill="none" stroke="#ef4444" stroke-width="2.5" opacity="0.8" />
-					<rect x={frontWheelX + frontDiscR - 6} y={groundY - frontWheelR - 8}
+					<rect x={viewSide === 'right' ? frontWheelX - frontDiscR - 6 : frontWheelX + frontDiscR - 6} y={groundY - frontWheelR - 8}
 						width="12" height="16" rx="2" fill="#ef4444" opacity="0.6" />
 
 					<!-- REAR WHEEL -->
@@ -553,11 +628,11 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					<!-- Rear disc rotor -->
 					<circle cx={rearWheelX} cy={groundY - rearWheelR} r={rearDiscR}
 						fill="none" stroke="#ef4444" stroke-width="2" opacity="0.8" />
-					<rect x={rearWheelX + rearDiscR - 5} y={groundY - rearWheelR - 6}
+					<rect x={viewSide === 'right' ? rearWheelX - rearDiscR - 5 : rearWheelX + rearDiscR - 5} y={groundY - rearWheelR - 6}
 						width="10" height="12" rx="2" fill="#ef4444" opacity="0.5" />
 
 					<!-- CHASSIS — pitches around midpoint between axles at axle height -->
-					<g transform="rotate({-simPitchDeg}, {(frontWheelX + rearWheelX) / 2}, {groundY - (frontWheelR + rearWheelR) / 2})">
+					<g transform="rotate({viewSide === 'right' ? simPitchDeg : -simPitchDeg}, {(frontWheelX + rearWheelX) / 2}, {groundY - (frontWheelR + rearWheelR) / 2})">
 						<!-- FRAME (triangle) -->
 						<polygon
 							points="{frontWheelX},{groundY - frontWheelR - 20} {rearWheelX},{groundY - rearWheelR - 10} {cogX},{cogY - 20}"
@@ -598,11 +673,11 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					<!-- Disc labels (not pitched) -->
 					<text x={frontWheelX} y={groundY - frontWheelR - frontDiscR - 12}
 						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{frontBrake.discDiameterMm} / {frontBrake.numberOfPots}-pot
+						Ø{Math.round(frontBrake.discDiameterMm)} / {frontBrake.numberOfPots}-pot
 					</text>
 					<text x={rearWheelX} y={groundY - rearWheelR - rearDiscR - 12}
 						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{rearBrake.discDiameterMm} / {rearBrake.numberOfPots}-pot
+						Ø{Math.round(rearBrake.discDiameterMm)} / {rearBrake.numberOfPots}-pot
 					</text>
 
 					<!-- Thermal load per rotor (above wheels) -->

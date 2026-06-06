@@ -1,10 +1,10 @@
 {
   "name": "phase1",
   "version": 1,
-  "savedAt": "2026-06-06T22:33:03.257Z",
+  "savedAt": "2026-06-06T23:37:17.353Z",
   "brakes": {
     "frontBrake": {
-      "discDiameterMm": 330.2,
+      "discDiameterMm": 152.39999999999998,
       "discThicknessMm": 5,
       "numberOfPots": 4,
       "pistonDiameterMm": 30,
@@ -15,10 +15,10 @@
       "dualSided": true
     },
     "rearBrake": {
-      "discDiameterMm": 304.79999999999995,
+      "discDiameterMm": 457.2,
       "discThicknessMm": 5,
       "numberOfPots": 3,
-      "pistonDiameterMm": 33,
+      "pistonDiameterMm": 34,
       "padCoefficientOfFriction": 0.42,
       "padAreaMm2": 1200,
       "masterCylinderDiaMm": 14,
@@ -28,33 +28,12 @@
     "vehicle": {
       "wheelbaseMm": 2794,
       "cogHeightMm": 609.5999999999999,
-      "cogPositionPct": 48,
-      "totalMassKg": 680.388,
-      "frontTireRadiusMm": 310,
+      "cogPositionPct": 50,
+      "totalMassKg": 210,
+      "frontTireRadiusMm": 320,
       "rearTireRadiusMm": 406.4,
-      "frontTireGrip": 0.8,
-      "rearTireGrip": 0.8
+      "frontTireGrip": 1.2,
+      "rearTireGrip": 1.1
     }
-  },
-  "frontEnd": {
-    "suspensionType": "leading_link",
-    "tireDesignation": "140/75R17",
-    "rakeAngleDeg": 45,
-    "forkOffsetMm": 70,
-    "forkLengthMm": 595,
-    "forkTravelMm": 125,
-    "compressionPct": 6,
-    "forkTubeSize": "41/54",
-    "invertedForks": false,
-    "steeringColumnHeightMm": 195,
-    "steeringColumnLengthIn": 7,
-    "spindleOffsetMm": -57.6,
-    "spindleHeightMm": 47.4,
-    "suspensionOffsetMm": 107,
-    "suspensionHeightMm": -10.6,
-    "suspUpperMountHeightMm": -67,
-    "suspUpperMountOffsetMm": 96,
-    "linkLengthMm": 155,
-    "linkOffsetMm": 30
   }
 }

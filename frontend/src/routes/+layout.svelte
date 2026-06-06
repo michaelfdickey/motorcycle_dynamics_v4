@@ -6,6 +6,8 @@
 	const tabs = [
 		{ label: 'Home', href: '/' },
 		{ label: 'Front End', href: '/front-end' },
+		{ label: 'Rear End', href: '/rear-end' },
+		{ label: 'Brakes', href: '/brakes' },
 		{ label: 'Suspension', href: '/suspension' },
 		{ label: 'Frame', href: '/frame' },
 		{ label: 'Kinematics', href: '/kinematics' },

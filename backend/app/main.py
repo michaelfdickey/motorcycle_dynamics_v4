@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import math
+import json
+from pathlib import Path
 
 app = FastAPI(
     title="Mototelos Motorcycle Dynamics",
@@ -122,3 +124,54 @@ async def compute_braking(req: BrakingRequest):
         "stopping_distance_m": round(stopping_distance, 2),
         "stopping_time_s": round(stopping_time, 3),
     }
+
+
+# ── Vehicle Design Save/Load ─────────────────────────────────────────────────
+
+VEHICLES_DIR = Path(__file__).resolve().parent.parent.parent / "vehicles"
+VEHICLES_DIR.mkdir(exist_ok=True)
+
+
+def _safe_filename(name: str) -> str:
+    """Sanitize name to prevent path traversal."""
+    clean = "".join(c for c in name if c.isalnum() or c in ("-", "_", " ")).strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Invalid vehicle name")
+    return clean
+
+
+@app.get("/api/vehicles")
+async def list_vehicles():
+    """List all saved vehicle designs."""
+    files = sorted(VEHICLES_DIR.glob("*.json"))
+    return [{"name": f.stem} for f in files]
+
+
+@app.get("/api/vehicles/{name}")
+async def get_vehicle(name: str):
+    """Load a vehicle design by name."""
+    clean = _safe_filename(name)
+    path = VEHICLES_DIR / f"{clean}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/vehicles/{name}")
+async def save_vehicle(name: str, design: dict):
+    """Save a vehicle design."""
+    clean = _safe_filename(name)
+    path = VEHICLES_DIR / f"{clean}.json"
+    path.write_text(json.dumps(design, indent=2), encoding="utf-8")
+    return {"status": "saved", "name": clean}
+
+
+@app.delete("/api/vehicles/{name}")
+async def delete_vehicle(name: str):
+    """Delete a vehicle design."""
+    clean = _safe_filename(name)
+    path = VEHICLES_DIR / f"{clean}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    path.unlink()
+    return {"status": "deleted", "name": clean}

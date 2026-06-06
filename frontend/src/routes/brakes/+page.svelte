@@ -11,6 +11,8 @@
 	import {
 		saveVehicleDesign,
 		loadVehicleDesign,
+		listVehicles,
+		deleteVehicleDesign,
 		getLastFileName,
 		type VehicleDesign,
 	} from '$lib/vehicleStore';
@@ -33,10 +35,20 @@
 
 	// ── Vehicle Save/Load ──
 	let vehicleName = $state(browser ? getLastFileName() : 'my_bike');
+	let savedVehicles = $state<{ name: string }[]>([]);
+	let saveStatus = $state<'' | 'saving' | 'saved' | 'error'>('');
+	let loadModalVisible = $state(false);
 
-	function handleSave() {
+	async function refreshVehicleList() {
+		savedVehicles = await listVehicles();
+	}
+	if (browser) refreshVehicleList();
+
+	async function handleSave() {
+		if (!vehicleName.trim()) return;
+		saveStatus = 'saving';
 		const design: VehicleDesign = {
-			name: vehicleName,
+			name: vehicleName.trim(),
 			version: 1,
 			savedAt: new Date().toISOString(),
 			brakes: {
@@ -45,17 +57,33 @@
 				vehicle: { ...vehicle },
 			},
 		};
-		saveVehicleDesign(design);
+		const ok = await saveVehicleDesign(design);
+		saveStatus = ok ? 'saved' : 'error';
+		if (ok) await refreshVehicleList();
+		setTimeout(() => { saveStatus = ''; }, 1500);
 	}
 
 	async function handleLoad() {
-		const design = await loadVehicleDesign();
+		await refreshVehicleList();
+		loadModalVisible = true;
+	}
+
+	async function handleLoadSelect(name: string) {
+		const design = await loadVehicleDesign(name);
 		if (!design) return;
 		vehicleName = design.name;
 		if (design.brakes) {
 			frontBrake = { ...defaultFrontBrake(), ...design.brakes.frontBrake } as BrakeParams;
 			rearBrake = { ...defaultRearBrake(), ...design.brakes.rearBrake } as BrakeParams;
 			vehicle = { ...defaultVehicleParams(), ...design.brakes.vehicle } as VehicleParams;
+		}
+		loadModalVisible = false;
+	}
+
+	async function handleDeleteVehicle(name: string) {
+		const ok = await deleteVehicleDesign(name);
+		if (ok) {
+			savedVehicles = savedVehicles.filter(v => v.name !== name);
 		}
 	}
 
@@ -448,11 +476,17 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		</p>
 		<div class="ml-auto flex items-center gap-2">
 			<input type="text" bind:value={vehicleName}
+				list="vehicle-list"
 				class="w-36 px-2 py-1 text-sm rounded bg-gray-800 border border-gray-700 text-gray-200 focus:border-orange-500 focus:outline-none"
 				placeholder="vehicle name" />
+			<datalist id="vehicle-list">
+				{#each savedVehicles as v}
+					<option value={v.name}></option>
+				{/each}
+			</datalist>
 			<button onclick={handleSave}
 				class="px-3 py-1 text-xs font-medium rounded bg-orange-600 hover:bg-orange-500 text-white transition-colors">
-				Save
+				{saveStatus === 'saving' ? '...' : saveStatus === 'saved' ? '✓' : 'Save'}
 			</button>
 			<button onclick={handleLoad}
 				class="px-3 py-1 text-xs font-medium rounded bg-gray-700 hover:bg-gray-600 text-white transition-colors">
@@ -937,6 +971,47 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			</div>
 			<div class="p-5 overflow-y-auto text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
 				{feedbackText}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Load Vehicle Popup -->
+{#if loadModalVisible}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={() => { loadModalVisible = false; }}>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="bg-gray-900 border border-gray-700 rounded-xl max-w-md w-full mx-4 max-h-[70vh] flex flex-col shadow-2xl"
+			onclick={(e) => e.stopPropagation()}>
+			<div class="flex items-center justify-between px-5 py-3 border-b border-gray-700">
+				<h3 class="text-sm font-semibold text-orange-400 uppercase tracking-wide">Load Vehicle Design</h3>
+				<button onclick={() => { loadModalVisible = false; }}
+					class="text-gray-400 hover:text-white text-lg leading-none">&times;</button>
+			</div>
+			<div class="p-4 overflow-y-auto flex-1">
+				{#if savedVehicles.length === 0}
+					<p class="text-gray-500 text-sm text-center py-6">No saved vehicles found.</p>
+				{:else}
+					<div class="space-y-2">
+						{#each savedVehicles as v}
+							<div class="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 border border-gray-700">
+								<span class="text-sm text-gray-200 font-medium">{v.name}</span>
+								<div class="flex gap-2">
+									<button onclick={() => handleLoadSelect(v.name)}
+										class="px-3 py-1 text-xs font-medium rounded bg-orange-600 hover:bg-orange-500 text-white transition-colors">
+										Load
+									</button>
+									<button onclick={() => handleDeleteVehicle(v.name)}
+										class="px-3 py-1 text-xs font-medium rounded bg-red-800 hover:bg-red-700 text-red-200 transition-colors">
+										Delete
+									</button>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>

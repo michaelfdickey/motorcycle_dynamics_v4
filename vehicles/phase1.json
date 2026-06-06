@@ -1,0 +1,39 @@
+{
+  "name": "phase1",
+  "version": 1,
+  "savedAt": "2026-06-06T18:06:35.855Z",
+  "brakes": {
+    "frontBrake": {
+      "discDiameterMm": 330.2,
+      "discThicknessMm": 5,
+      "numberOfPots": 4,
+      "pistonDiameterMm": 30,
+      "padCoefficientOfFriction": 0.45,
+      "padAreaMm2": 2400,
+      "masterCylinderDiaMm": 16,
+      "leverRatio": 4,
+      "dualSided": true
+    },
+    "rearBrake": {
+      "discDiameterMm": 304.79999999999995,
+      "discThicknessMm": 5,
+      "numberOfPots": 3,
+      "pistonDiameterMm": 33,
+      "padCoefficientOfFriction": 0.42,
+      "padAreaMm2": 1200,
+      "masterCylinderDiaMm": 14,
+      "leverRatio": 3.5,
+      "dualSided": false
+    },
+    "vehicle": {
+      "wheelbaseMm": 2794,
+      "cogHeightMm": 609.5999999999999,
+      "cogPositionPct": 48,
+      "totalMassKg": 680.388,
+      "frontTireRadiusMm": 310,
+      "rearTireRadiusMm": 406.4,
+      "frontTireGrip": 0.8,
+      "rearTireGrip": 0.8
+    }
+  }
+}

@@ -159,11 +159,14 @@ def start(frontend_port, backend_port):
     # Start frontend
     print(f"Starting frontend on http://localhost:{frontend_port} ...")
     npm_cmd = "npm.cmd" if IS_WINDOWS else "npm"
+    frontend_env = os.environ.copy()
+    frontend_env["BACKEND_PORT"] = str(backend_port)
     frontend_proc = subprocess.Popen(
         [npm_cmd, "run", "dev", "--", "--host", "0.0.0.0",
          "--port", str(frontend_port)],
         cwd=FRONTEND_DIR,
         creationflags=creation_flags,
+        env=frontend_env,
     )
     with open(FRONTEND_PID_FILE, "w") as f:
         f.write(str(frontend_proc.pid))

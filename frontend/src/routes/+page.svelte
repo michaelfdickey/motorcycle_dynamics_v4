@@ -3,8 +3,7 @@
 
 	async function checkBackend() {
 		try {
-			const backendUrl = `http://${window.location.hostname}:8000/api/health`;
-			const res = await fetch(backendUrl);
+			const res = await fetch('/api/health');
 			if (res.ok) {
 				const data = await res.json();
 				backendStatus = `Connected — ${data.app}`;

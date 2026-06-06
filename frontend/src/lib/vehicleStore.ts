@@ -1,6 +1,6 @@
 /**
  * Vehicle design save/load utility.
- * Saves all vehicle parameters as a JSON file with sections per tab.
+ * Persists vehicle JSON files via the backend API to a local project folder.
  */
 
 export interface VehicleDesign {
@@ -21,6 +21,11 @@ export interface VehicleDesign {
 
 const STORAGE_KEY = 'motorcycle_vehicle_name';
 
+function apiBase(): string {
+	// In dev, Vite proxies /api to the backend; use relative path
+	return '';
+}
+
 /** Get last used filename from localStorage */
 export function getLastFileName(): string {
 	if (typeof localStorage !== 'undefined') {
@@ -36,44 +41,40 @@ export function setLastFileName(name: string): void {
 	}
 }
 
-/** Save vehicle design as a downloaded JSON file */
-export function saveVehicleDesign(design: VehicleDesign): void {
-	const json = JSON.stringify(design, null, 2);
-	const blob = new Blob([json], { type: 'application/json' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = `${design.name}.json`;
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
-	setLastFileName(design.name);
+/** List all saved vehicle designs */
+export async function listVehicles(): Promise<{ name: string }[]> {
+	const res = await fetch(`${apiBase()}/api/vehicles`);
+	if (!res.ok) return [];
+	return res.json();
 }
 
-/** Load vehicle design from a user-selected JSON file. Returns null if cancelled. */
-export function loadVehicleDesign(): Promise<VehicleDesign | null> {
-	return new Promise((resolve) => {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = '.json';
-		input.onchange = async () => {
-			const file = input.files?.[0];
-			if (!file) { resolve(null); return; }
-			try {
-				const text = await file.text();
-				const design = JSON.parse(text) as VehicleDesign;
-				if (!design.name || !design.version) {
-					throw new Error('Invalid vehicle design file');
-				}
-				setLastFileName(design.name);
-				resolve(design);
-			} catch {
-				alert('Failed to load vehicle file. Check format.');
-				resolve(null);
-			}
-		};
-		input.oncancel = () => resolve(null);
-		input.click();
+/** Save vehicle design to backend */
+export async function saveVehicleDesign(design: VehicleDesign): Promise<boolean> {
+	const res = await fetch(`${apiBase()}/api/vehicles/${encodeURIComponent(design.name)}`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(design),
 	});
+	if (res.ok) {
+		setLastFileName(design.name);
+		return true;
+	}
+	return false;
+}
+
+/** Load vehicle design from backend by name */
+export async function loadVehicleDesign(name: string): Promise<VehicleDesign | null> {
+	const res = await fetch(`${apiBase()}/api/vehicles/${encodeURIComponent(name)}`);
+	if (!res.ok) return null;
+	const design = await res.json() as VehicleDesign;
+	setLastFileName(design.name);
+	return design;
+}
+
+/** Delete a vehicle design */
+export async function deleteVehicleDesign(name: string): Promise<boolean> {
+	const res = await fetch(`${apiBase()}/api/vehicles/${encodeURIComponent(name)}`, {
+		method: 'DELETE',
+	});
+	return res.ok;
 }

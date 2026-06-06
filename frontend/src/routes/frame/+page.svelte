@@ -1,4 +1,6 @@
 <script lang="ts">
+	import GeometryLayoutEditor from '$lib/components/frame/GeometryLayoutEditor.svelte';
+
 	let activeTab = $state(0);
 
 	const models = [
@@ -769,6 +771,44 @@
 	</div>
 
 	<!-- Active model detail -->
+	{#if activeTab === 0}
+		<GeometryLayoutEditor />
+		<!-- Description below editor -->
+		<div class="rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6 mt-4">
+			<div>
+				<h3 class="text-lg font-semibold text-gray-100">{active.title}</h3>
+				<span class="inline-block mt-1 px-2 py-0.5 text-[10px] uppercase tracking-widest rounded bg-gray-800 text-gray-500">Level {active.id}</span>
+			</div>
+			<div>
+				<h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Model Summary</h4>
+				<p class="text-sm text-gray-300 leading-relaxed">{active.summary}</p>
+			</div>
+			<div>
+				<h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Technical Description</h4>
+				<p class="text-sm text-gray-400 leading-relaxed">{active.technical}</p>
+			</div>
+			<div class="grid gap-4 sm:grid-cols-2">
+				{#each active.sections as section}
+					<div class="rounded border border-gray-800 bg-gray-950 p-3">
+						<h5 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{section.heading}</h5>
+						<ul class="space-y-1">
+							{#each section.items as item}
+								<li class="text-sm text-gray-400 flex gap-2">
+									<span class="text-gray-600 shrink-0">&bull;</span>
+									<span>{item}</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/each}
+			</div>
+			{#if active.note}
+				<div class="rounded border border-orange-500/20 bg-orange-500/5 px-4 py-3">
+					<p class="text-sm text-orange-300/80"><span class="font-semibold text-orange-400">Note:</span> {active.note}</p>
+				</div>
+			{/if}
+		</div>
+	{:else}
 	<div class="rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6">
 		<!-- Header -->
 		<div>
@@ -812,4 +852,5 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 </div>

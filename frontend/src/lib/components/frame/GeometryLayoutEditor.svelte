@@ -1392,50 +1392,147 @@
 					{@const feAnchor = getAnchorNode('front_anchor')}
 					{#if feAnchor}
 						{@const fe = frontEndResults}
+						{@const fed = frontEndData}
 						{@const anchorX = feAnchor.x}
 						{@const anchorY = feAnchor.y}
 						{@const offsetX = anchorX - fe.steeringColumnCenter.x}
 						{@const offsetY = anchorY - fe.steeringColumnCenter.y}
 						{@const feColor = '#f97316'}
-						{@const feOpacity = 0.5}
-						<!-- Steering axis line -->
+						{@const feOpacity = 0.6}
+						{@const feRakeRad = (fed?.rakeAngleDeg ?? rakeAngleDeg) * Math.PI / 180}
+						{@const saDirX = -Math.sin(feRakeRad)}
+						{@const saDirY = Math.cos(feRakeRad)}
+						{@const saPerpX = saDirY}
+						{@const saPerpY = -saDirX}
+						{@const forkOffset = fed?.forkOffsetMm ?? 40}
+						{@const scHeight = fed?.steeringColumnHeightMm ?? 200}
+						{@const scHalfH = scHeight / 2}
+						{@const scHalfW = 25}
+						{@const ttThick = scHalfW / 2}
+						{@const ttGap = 3}
+
+						<!-- Steering axis line (full length) -->
 						{@const [saGx, saGy] = worldToScreen(fe.steeringAxisGround.x + offsetX, fe.steeringAxisGround.y + offsetY)}
 						{@const [saTx, saTy] = worldToScreen(fe.steeringAxisTop.x + offsetX, fe.steeringAxisTop.y + offsetY)}
 						<line x1={saGx} y1={saGy} x2={saTx} y2={saTy}
-							stroke={feColor} stroke-width="1.5" stroke-dasharray="6,3" opacity={feOpacity} />
-						<!-- Steering column (rectangle approximation) -->
-						{@const [scCx, scCy] = worldToScreen(fe.steeringColumnCenter.x + offsetX, fe.steeringColumnCenter.y + offsetY)}
-						{@const scHalfLen = (frontEndData?.steeringColumnHeightMm ?? 200) / 2 * zoom}
-						{@const scHalfW = 25 * zoom}
-						{@const feRakeRad = (frontEndData?.rakeAngleDeg ?? rakeAngleDeg) * Math.PI / 180}
-						{@const scDirX = Math.sin(feRakeRad)}
-						{@const scDirY = Math.cos(feRakeRad)}
-						{@const scPerpX = scDirY}
-						{@const scPerpY = -scDirX}
-						<polygon
-							points="{scCx + scHalfLen * scDirX + scHalfW * scPerpX},{scCy - scHalfLen * scDirY - scHalfW * scPerpY} {scCx + scHalfLen * scDirX - scHalfW * scPerpX},{scCy - scHalfLen * scDirY + scHalfW * scPerpY} {scCx - scHalfLen * scDirX - scHalfW * scPerpX},{scCy + scHalfLen * scDirY + scHalfW * scPerpY} {scCx - scHalfLen * scDirX + scHalfW * scPerpX},{scCy + scHalfLen * scDirY - scHalfW * scPerpY}"
+							stroke="#60a5fa" stroke-width="1" stroke-dasharray="8,4" opacity={feOpacity * 0.6} />
+
+						<!-- Steering column rectangle -->
+						{@const scCx = fe.steeringColumnCenter.x + offsetX}
+						{@const scCy = fe.steeringColumnCenter.y + offsetY}
+						{@const sc1x = scCx + scHalfH * saDirX + scHalfW * saPerpX}
+						{@const sc1y = scCy + scHalfH * saDirY + scHalfW * saPerpY}
+						{@const sc2x = scCx + scHalfH * saDirX - scHalfW * saPerpX}
+						{@const sc2y = scCy + scHalfH * saDirY - scHalfW * saPerpY}
+						{@const sc3x = scCx - scHalfH * saDirX - scHalfW * saPerpX}
+						{@const sc3y = scCy - scHalfH * saDirY - scHalfW * saPerpY}
+						{@const sc4x = scCx - scHalfH * saDirX + scHalfW * saPerpX}
+						{@const sc4y = scCy - scHalfH * saDirY + scHalfW * saPerpY}
+						{@const [s1x, s1y] = worldToScreen(sc1x, sc1y)}
+						{@const [s2x, s2y] = worldToScreen(sc2x, sc2y)}
+						{@const [s3x, s3y] = worldToScreen(sc3x, sc3y)}
+						{@const [s4x, s4y] = worldToScreen(sc4x, sc4y)}
+						<polygon points="{s1x},{s1y} {s2x},{s2y} {s3x},{s3y} {s4x},{s4y}"
+							fill="none" stroke={feColor} stroke-width="2" opacity={feOpacity} />
+
+						<!-- Top triple tree -->
+						{@const ttTopCy = scCy + (scHalfH + ttGap + ttThick / 2) * saDirY}
+						{@const ttTopCx = scCx + (scHalfH + ttGap + ttThick / 2) * saDirX}
+						{@const ttMinPerp = Math.min(-scHalfW, forkOffset - scHalfW)}
+						{@const ttMaxPerp = Math.max(scHalfW, forkOffset + scHalfW)}
+						{@const tt1x = ttTopCx + ttThick / 2 * saDirX + ttMinPerp * saPerpX}
+						{@const tt1y = ttTopCy + ttThick / 2 * saDirY + ttMinPerp * saPerpY}
+						{@const tt2x = ttTopCx + ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
+						{@const tt2y = ttTopCy + ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
+						{@const tt3x = ttTopCx - ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
+						{@const tt3y = ttTopCy - ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
+						{@const tt4x = ttTopCx - ttThick / 2 * saDirX + ttMinPerp * saPerpX}
+						{@const tt4y = ttTopCy - ttThick / 2 * saDirY + ttMinPerp * saPerpY}
+						{@const [t1x, t1y] = worldToScreen(tt1x, tt1y)}
+						{@const [t2x, t2y] = worldToScreen(tt2x, tt2y)}
+						{@const [t3x, t3y] = worldToScreen(tt3x, tt3y)}
+						{@const [t4x, t4y] = worldToScreen(tt4x, tt4y)}
+						<polygon points="{t1x},{t1y} {t2x},{t2y} {t3x},{t3y} {t4x},{t4y}"
 							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
-						<!-- Fork tubes -->
+
+						<!-- Bottom triple tree -->
+						{@const btTopCy = scCy - (scHalfH + ttGap + ttThick / 2) * saDirY}
+						{@const btTopCx = scCx - (scHalfH + ttGap + ttThick / 2) * saDirX}
+						{@const bt1x = btTopCx + ttThick / 2 * saDirX + ttMinPerp * saPerpX}
+						{@const bt1y = btTopCy + ttThick / 2 * saDirY + ttMinPerp * saPerpY}
+						{@const bt2x = btTopCx + ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
+						{@const bt2y = btTopCy + ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
+						{@const bt3x = btTopCx - ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
+						{@const bt3y = btTopCy - ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
+						{@const bt4x = btTopCx - ttThick / 2 * saDirX + ttMinPerp * saPerpX}
+						{@const bt4y = btTopCy - ttThick / 2 * saDirY + ttMinPerp * saPerpY}
+						{@const [b1x, b1y] = worldToScreen(bt1x, bt1y)}
+						{@const [b2x, b2y] = worldToScreen(bt2x, bt2y)}
+						{@const [b3x, b3y] = worldToScreen(bt3x, bt3y)}
+						{@const [b4x, b4y] = worldToScreen(bt4x, bt4y)}
+						<polygon points="{b1x},{b1y} {b2x},{b2y} {b3x},{b3y} {b4x},{b4y}"
+							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
+
+						<!-- Fork tube (line from forkTop to forkBottom, offset from SA by forkOffset) -->
 						{@const [ftx, fty] = worldToScreen(fe.forkTop.x + offsetX, fe.forkTop.y + offsetY)}
 						{@const [fbx, fby] = worldToScreen(fe.forkBottom.x + offsetX, fe.forkBottom.y + offsetY)}
+						{@const forkTubeW = (fed?.forkTubeSize?.includes('54') ? 54 : fed?.forkTubeSize?.includes('49') ? 49 : fed?.forkTubeSize?.includes('46') ? 46 : fed?.forkTubeSize?.includes('41') ? 41 : fed?.forkTubeSize?.includes('37') ? 37 : 41) * zoom}
 						<line x1={ftx} y1={fty} x2={fbx} y2={fby}
-							stroke={feColor} stroke-width="2" opacity={feOpacity} />
-						<!-- Axle -->
+							stroke={feColor} stroke-width={Math.max(2, forkTubeW * 0.8)} opacity={feOpacity * 0.4} />
+						<line x1={ftx} y1={fty} x2={fbx} y2={fby}
+							stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
+
+						<!-- Link arm (for leading/trailing link types) -->
+						{#if fe.linkPivot && fe.linkEnd}
+							{@const [lpx, lpy] = worldToScreen(fe.linkPivot.x + offsetX, fe.linkPivot.y + offsetY)}
+							{@const [lex, ley] = worldToScreen(fe.linkEnd.x + offsetX, fe.linkEnd.y + offsetY)}
+							<line x1={lpx} y1={lpy} x2={lex} y2={ley}
+								stroke={feColor} stroke-width="3" opacity={feOpacity} />
+							<circle cx={lpx} cy={lpy} r={4} fill={feColor} opacity={feOpacity} />
+							<circle cx={lex} cy={ley} r={4} fill={feColor} opacity={feOpacity} />
+						{/if}
+
+						<!-- Fork end cap circle -->
+						{@const forkCapR = 25.4}
+						{@const forkBottomX = fe.forkBottom.x + offsetX}
+						{@const forkBottomY = fe.forkBottom.y + offsetY}
+						{@const capCx = forkBottomX - 25.4 * saDirX}
+						{@const capCy = forkBottomY - 25.4 * saDirY}
+						{@const [fcx, fcy] = worldToScreen(capCx, capCy)}
+						<circle cx={fcx} cy={fcy} r={forkCapR * zoom}
+							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
+
+						<!-- Axle/Spindle -->
 						{@const [axX, axY] = worldToScreen(fe.axleCenter.x + offsetX, fe.axleCenter.y + offsetY)}
-						<circle cx={axX} cy={axY} r={4} fill={feColor} opacity={feOpacity} />
-						<!-- Wheel -->
+						{@const spindleOuterR = 25.4 * zoom}
+						{@const spindleInnerR = 12.7 * zoom}
+						<circle cx={axX} cy={axY} r={spindleOuterR}
+							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.7} />
+						<circle cx={axX} cy={axY} r={spindleInnerR}
+							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.7} />
+						<circle cx={axX} cy={axY} r={3} fill={feColor} opacity={feOpacity} />
+
+						<!-- Wheel (outer tire) -->
 						{@const wheelR = frontEndTire.outerRadiusMm * zoom}
 						<circle cx={axX} cy={axY} r={wheelR}
-							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity * 0.7} />
-						<!-- Tire section -->
-						{@const tireW = frontEndTire.sectionWidthMm * zoom * 0.3}
-						<circle cx={axX} cy={axY} r={wheelR}
-							fill="none" stroke={feColor} stroke-width={tireW} opacity={feOpacity * 0.15} />
+							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity * 0.6} />
+						<!-- Rim -->
+						{@const rimR = frontEndTire.rimRadiusMm * zoom}
+						<circle cx={axX} cy={axY} r={rimR}
+							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.4} />
+						<!-- Tire cross section (thick stroke) -->
+						{@const tireW = (frontEndTire.outerRadiusMm - frontEndTire.rimRadiusMm) * zoom}
+						{@const tireMidR = (frontEndTire.outerRadiusMm + frontEndTire.rimRadiusMm) / 2 * zoom}
+						<circle cx={axX} cy={axY} r={tireMidR}
+							fill="none" stroke={feColor} stroke-width={tireW} opacity={feOpacity * 0.12} />
+
 						<!-- Contact patch -->
 						{@const [cpx, cpy] = worldToScreen(fe.contactPatch.x + offsetX, fe.contactPatch.y + offsetY)}
-						<circle cx={cpx} cy={cpy} r={3} fill={feColor} opacity={feOpacity} />
-						<!-- Label -->
-						<text x={scCx + 15} y={scCy - scHalfLen - 10} fill={feColor} font-size="10" opacity={feOpacity}>
+						<circle cx={cpx} cy={cpy} r={4} fill={feColor} stroke="#fff" stroke-width="1" opacity={feOpacity} />
+
+						<!-- Label at top -->
+						{@const [labelX, labelY] = worldToScreen(fe.steeringAxisTop.x + offsetX, fe.steeringAxisTop.y + offsetY)}
+						<text x={labelX + 10} y={labelY - 5} fill={feColor} font-size="10" opacity={feOpacity * 0.8}>
 							Front End
 						</text>
 					{/if}

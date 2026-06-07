@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { listVehicles, saveVehicleDesign, loadVehicleDesign, getLastFileName, setLastFileName, type VehicleDesign } from '$lib/vehicleStore';
+	import { computeFrontEnd, type FrontEndResults, type FrontEndInputs } from '$lib/frontEndGeometry';
+	import { parseTireDesignation, computeTireDimensions, type TireDimensions } from '$lib/tire';
 
 	// ── Types ──
-	type Tool = 'select' | 'node' | 'member' | 'constraint' | 'dimension' | 'refline' | 'edit';
-	type NodeType = 'generic' | 'steering_head' | 'rear_axle' | 'rear_module' | 'engine' | 'seat' | 'rider' | 'anchor';
+	type Tool = 'select' | 'node' | 'member' | 'constraint' | 'dimension' | 'refline' | 'edit' | 'anchor';
+	type NodeType = 'generic' | 'steering_head' | 'rear_axle' | 'rear_module' | 'engine' | 'seat' | 'rider' | 'anchor' | 'front_anchor' | 'rear_anchor';
 	type ConstraintType = 'horizontal' | 'vertical' | 'distance' | 'angle' | 'fixed';
 	type LineStyle = 'dashed-sm' | 'dashed-lg' | 'solid';
 	type ViewSide = 'right' | 'left';
@@ -88,11 +90,15 @@
 	let showGround = $state(true);
 	let showRefLines = $state(true);
 	let showScale = $state(true);
+	let showFrontEnd = $state(true);
+	let showRearEnd = $state(true);
 
 	// UI dropdowns
 	let showClearMenu = $state(false);
 	let showSnapMenu = $state(false);
 	let showDisplayMenu = $state(false);
+	let showAnchorMenu = $state(false);
+	let anchorSubType = $state<'front_anchor' | 'rear_anchor'>('front_anchor');
 
 	// Unit system
 	type UnitSystem = 'metric' | 'us';
@@ -377,6 +383,7 @@
 		showSnapMenu = false;
 		showDisplayMenu = false;
 		showClearMenu = false;
+		showAnchorMenu = false;
 
 		if (editPopupVisible && activeTool !== 'edit') {
 			editPopupVisible = false;
@@ -521,6 +528,29 @@
 				refLines = [...refLines, newRL];
 				selected = { kind: 'refline', data: newRL };
 				reflineStart = null;
+			}
+		} else if (activeTool === 'anchor') {
+			pushUndo();
+			const nx = snapWorld(wx);
+			const ny = snapWorld(wy);
+			// Only allow one of each anchor type
+			const existing = nodes.find(n => n.type === anchorSubType);
+			if (existing) {
+				// Move existing anchor
+				existing.x = nx;
+				existing.y = ny;
+				nodes = nodes;
+				selected = { kind: 'node', data: existing };
+			} else {
+				const newNode: LayoutNode = {
+					id: genId('a'),
+					x: nx,
+					y: ny,
+					type: anchorSubType,
+					label: anchorSubType === 'front_anchor' ? 'Front End' : 'Rear End',
+				};
+				nodes = [...nodes, newNode];
+				selected = { kind: 'node', data: newNode };
 			}
 		}
 	}
@@ -692,6 +722,7 @@
 			if (e.key === 'd' || e.key === '5') activeTool = 'dimension';
 			if (e.key === 'r' || e.key === '6') activeTool = 'refline';
 			if (e.key === 'e' || e.key === '7') activeTool = 'edit';
+			if (e.key === 'a' || e.key === '8') activeTool = 'anchor';
 			if (e.key === 'g') showGrid = !showGrid;
 			if (e.key === 's' && !e.metaKey && !e.ctrlKey) showSnap = !showSnap;
 		}
@@ -706,6 +737,7 @@
 			panX, panY, zoom, wheelbaseMm, seatHeightMm, rakeAngleDeg,
 			frontWheelRadiusMm, rearWheelRadiusMm, nextId, layers, unitSystem, viewSide,
 			snapSizeUS, snapSizeMetric, showGrid, showSnap, showOrigin, showGround, showRefLines, showScale,
+			showFrontEnd, showRearEnd,
 		};
 		try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 	}
@@ -738,6 +770,8 @@
 			if (data.showGround != null) showGround = data.showGround;
 			if (data.showRefLines != null) showRefLines = data.showRefLines;
 			if (data.showScale != null) showScale = data.showScale;
+			if (data.showFrontEnd != null) showFrontEnd = data.showFrontEnd;
+			if (data.showRearEnd != null) showRearEnd = data.showRearEnd;
 			if (data.layers) {
 				for (const k of Object.keys(layers)) {
 					if (k in data.layers) (layers as any)[k] = data.layers[k];
@@ -746,11 +780,12 @@
 		} catch {}
 	}
 
-	$effect(() => { loadState(); });
+	$effect(() => { loadState(); loadFrontEndData(); });
 	$effect(() => {
 		const _ = [nodes, members, constraints, dimensions, refLines, panX, panY, zoom,
 			wheelbaseMm, seatHeightMm, rakeAngleDeg, frontWheelRadiusMm, rearWheelRadiusMm, layers, unitSystem, viewSide,
-			snapSizeUS, snapSizeMetric, showGrid, showSnap, showOrigin, showGround, showRefLines, showScale];
+			snapSizeUS, snapSizeMetric, showGrid, showSnap, showOrigin, showGround, showRefLines, showScale,
+			showFrontEnd, showRearEnd];
 		saveState();
 	});
 
@@ -806,6 +841,7 @@
 		saveStatus = 'Loaded';
 		setTimeout(() => saveStatus = '', 2000);
 		selected = null;
+		await loadFrontEndData();
 	}
 
 	function resetView() {
@@ -815,6 +851,44 @@
 	}
 
 	$effect(() => { refreshVehicleList(); });
+
+	// ── Front End geometry from saved vehicle design ──
+	let frontEndData = $state<any>(null);
+	let frontEndResults = $state<FrontEndResults | null>(null);
+	let frontEndTire = $state<TireDimensions | null>(null);
+
+	// Load front end data whenever vehicle name changes or on mount
+	async function loadFrontEndData() {
+		if (!vehicleName.trim()) { frontEndData = null; frontEndResults = null; frontEndTire = null; return; }
+		try {
+			const design = await loadVehicleDesign(vehicleName);
+			if (design?.frontEnd) {
+				frontEndData = design.frontEnd;
+				const fe = design.frontEnd as any;
+				const tireStr = fe.tireDesignation || '120/70ZR17';
+				const parsed = parseTireDesignation(tireStr);
+				const tire = computeTireDimensions(parsed);
+				frontEndTire = tire;
+				const inputs: FrontEndInputs = {
+					suspensionType: fe.suspensionType || 'telescopic',
+					rakeAngleDeg: fe.rakeAngleDeg ?? rakeAngleDeg,
+					forkOffsetMm: fe.forkOffsetMm ?? 40,
+					linkLengthMm: fe.linkLengthMm ?? 200,
+					linkOffsetMm: fe.linkOffsetMm ?? 0,
+					steeringColumnHeightMm: fe.steeringColumnHeightMm ?? 200,
+					forkLengthMm: fe.forkLengthMm ?? 600,
+				};
+				frontEndResults = computeFrontEnd(inputs, tire);
+			} else {
+				frontEndData = null; frontEndResults = null; frontEndTire = null;
+			}
+		} catch { frontEndData = null; frontEndResults = null; frontEndTire = null; }
+	}
+
+	// Helper: get anchor node by type
+	function getAnchorNode(type: 'front_anchor' | 'rear_anchor'): LayoutNode | undefined {
+		return nodes.find(n => n.type === type);
+	}
 
 	// ── Derived geometry for wheel/steering references ──
 	const rearContactX = $derived(0);
@@ -833,6 +907,8 @@
 		seat: '#fbbf24',
 		rider: '#34d399',
 		anchor: '#f472b6',
+		front_anchor: '#f97316',
+		rear_anchor: '#22d3ee',
 	};
 	const nodeTypeLabels: Record<NodeType, string> = {
 		generic: 'Generic',
@@ -843,6 +919,8 @@
 		seat: 'Seat',
 		rider: 'Rider',
 		anchor: 'Anchor',
+		front_anchor: 'Front End Anchor',
+		rear_anchor: 'Rear End Anchor',
 	};
 
 	// Tool config
@@ -854,6 +932,7 @@
 		{ id: 'constraint', label: 'Constraint', icon: '\u25BD', shortcut: 'C' },
 		{ id: 'dimension', label: 'Dimension', icon: '\u2194', shortcut: 'D' },
 		{ id: 'refline', label: 'Reference Line', icon: '\u2504', shortcut: 'R' },
+		{ id: 'anchor', label: 'Anchor', icon: '\u2693', shortcut: 'A' },
 	];
 
 	// ResizeObserver for canvas
@@ -936,6 +1015,15 @@
 						onclick={() => showScale = !showScale}>
 						{showScale ? '✓' : '  '} Scale
 					</button>
+					<div class="border-t border-gray-700 my-1"></div>
+					<button class="w-full text-left px-3 py-1 hover:bg-gray-700 {showFrontEnd ? 'text-orange-400' : 'text-gray-400'}"
+						onclick={() => showFrontEnd = !showFrontEnd}>
+						{showFrontEnd ? '✓' : '  '} Front End
+					</button>
+					<button class="w-full text-left px-3 py-1 hover:bg-gray-700 {showRearEnd ? 'text-cyan-400' : 'text-gray-400'}"
+						onclick={() => showRearEnd = !showRearEnd}>
+						{showRearEnd ? '✓' : '  '} Rear End
+					</button>
 				</div>
 			{/if}
 		</div>
@@ -997,18 +1085,48 @@
 		<!-- Left Tool Palette -->
 		<div class="w-14 shrink-0 border-r border-gray-800 bg-gray-900 flex flex-col items-center py-2 gap-1">
 			{#each tools as tool}
+				{#if tool.id === 'anchor'}
+					<!-- Anchor tool with sub-menu -->
+					<div class="relative">
+						<button
+							type="button"
+							class="w-10 h-10 flex flex-col items-center justify-center rounded text-xs transition-colors
+								{activeTool === 'anchor'
+									? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+									: 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}"
+							onclick={() => { showAnchorMenu = !showAnchorMenu; }}
+							title="{tool.label} ({tool.shortcut})"
+						>
+							<span class="text-base leading-none">{tool.icon}</span>
+							<span class="text-[8px] mt-0.5 leading-none">{tool.shortcut}</span>
+						</button>
+						{#if showAnchorMenu}
+							<div class="absolute left-12 top-0 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[130px]">
+								<button class="w-full text-left px-3 py-1.5 hover:bg-gray-700 text-xs {anchorSubType === 'front_anchor' && activeTool === 'anchor' ? 'text-orange-400' : 'text-gray-300'}"
+									onclick={() => { anchorSubType = 'front_anchor'; activeTool = 'anchor'; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
+									⚓ Front End Anchor
+								</button>
+								<button class="w-full text-left px-3 py-1.5 hover:bg-gray-700 text-xs {anchorSubType === 'rear_anchor' && activeTool === 'anchor' ? 'text-cyan-400' : 'text-gray-300'}"
+									onclick={() => { anchorSubType = 'rear_anchor'; activeTool = 'anchor'; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
+									⚓ Rear End Anchor
+								</button>
+							</div>
+						{/if}
+					</div>
+				{:else}
 				<button
 					type="button"
 					class="w-10 h-10 flex flex-col items-center justify-center rounded text-xs transition-colors
 						{activeTool === tool.id
 							? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
 							: 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}"
-					onclick={() => { activeTool = tool.id; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}
+					onclick={() => { activeTool = tool.id; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; showAnchorMenu = false; }}
 					title="{tool.label} ({tool.shortcut})"
 				>
 					<span class="text-base leading-none">{tool.icon}</span>
 					<span class="text-[8px] mt-0.5 leading-none">{tool.shortcut}</span>
 				</button>
+				{/if}
 			{/each}
 
 			<div class="flex-1"></div>
@@ -1216,30 +1334,38 @@
 
 				<!-- Nodes -->
 				{#each nodes as n}
-					{@const isAnchor = n.type === 'anchor' || n.type === 'steering_head' || n.type === 'rear_axle' || n.type === 'rear_module'}
-					{@const layerOk = (isAnchor ? layers.anchors : layers.frame)}
+					{@const isSpecialAnchor = n.type === 'front_anchor' || n.type === 'rear_anchor'}
+					{@const isOldAnchor = n.type === 'anchor' || n.type === 'steering_head' || n.type === 'rear_axle' || n.type === 'rear_module'}
+					{@const layerOk = (isOldAnchor || isSpecialAnchor) ? layers.anchors : layers.frame}
 					{#if layerOk}
 						{@const [nx, ny] = worldToScreen(n.x, n.y)}
 						{@const isSelected = selected?.kind === 'node' && selected.data.id === n.id}
 						{@const isHovered = hoveredNodeId === n.id}
 						{@const color = nodeTypeColors[n.type]}
-						<circle cx={nx} cy={ny} r={isSelected ? 7 : isHovered ? 6 : 5}
+						{@const baseR = isSpecialAnchor ? 9 : 5}
+						<circle cx={nx} cy={ny} r={isSelected ? baseR + 2 : isHovered ? baseR + 1 : baseR}
 							fill={isSelected ? '#fbbf24' : color}
-							stroke={isSelected ? '#fff' : isHovered ? '#fff' : 'none'}
-							stroke-width={isSelected ? 2 : 1}
+							stroke={isSelected ? '#fff' : isHovered ? '#fff' : isSpecialAnchor ? '#fff' : 'none'}
+							stroke-width={isSelected ? 2 : isSpecialAnchor ? 1.5 : 1}
+							opacity={isSpecialAnchor ? 0.9 : 1}
 							onpointerenter={() => hoveredNodeId = n.id}
 							onpointerleave={() => hoveredNodeId = null}
 							style="cursor: pointer;" />
+						{#if isSpecialAnchor}
+							<!-- Crosshair on anchor -->
+							<line x1={nx - baseR - 3} y1={ny} x2={nx + baseR + 3} y2={ny} stroke={color} stroke-width="1" opacity="0.5" />
+							<line x1={nx} y1={ny - baseR - 3} x2={nx} y2={ny + baseR + 3} stroke={color} stroke-width="1" opacity="0.5" />
+						{/if}
 						{#if isSelected}
-							<circle cx={nx} cy={ny} r="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,2" opacity="0.5" />
+							<circle cx={nx} cy={ny} r={baseR + 7} fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,2" opacity="0.5" />
 						{/if}
 						{#if n.label || n.type !== 'generic'}
-							<text x={nx + 9} y={ny - 6} fill={color} font-size="9" opacity="0.8">
+							<text x={nx + baseR + 4} y={ny - 6} fill={color} font-size={isSpecialAnchor ? '11' : '9'} font-weight={isSpecialAnchor ? 'bold' : 'normal'} opacity="0.8">
 								{n.label || nodeTypeLabels[n.type]}
 							</text>
 						{/if}
 						{#if isHovered || isSelected}
-							<text x={nx + 9} y={ny + 14} fill="#9ca3af" font-size="8" font-family="monospace">
+							<text x={nx + baseR + 4} y={ny + 14} fill="#9ca3af" font-size="8" font-family="monospace">
 								({fmtCoord(n.x)}, {fmtCoord(n.y)})
 							</text>
 						{/if}
@@ -1259,6 +1385,60 @@
 					<line x1={kx} y1={ky} x2={fx} y2={fy} stroke="#34d399" stroke-width="1.5" opacity="0.3" />
 					{@const [ax_, ay_] = worldToScreen(frontContactX - 50, seatHeightMm + 100)}
 					<line x1={hx} y1={hy + (16 * zoom > 8 ? 16 * zoom : 8)} x2={ax_} y2={ay_} stroke="#34d399" stroke-width="1" opacity="0.2" stroke-dasharray="4,3" />
+				{/if}
+
+				<!-- Front End geometry overlay -->
+				{#if showFrontEnd && frontEndResults && frontEndTire}
+					{@const feAnchor = getAnchorNode('front_anchor')}
+					{#if feAnchor}
+						{@const fe = frontEndResults}
+						{@const anchorX = feAnchor.x}
+						{@const anchorY = feAnchor.y}
+						{@const offsetX = anchorX - fe.steeringColumnCenter.x}
+						{@const offsetY = anchorY - fe.steeringColumnCenter.y}
+						{@const feColor = '#f97316'}
+						{@const feOpacity = 0.5}
+						<!-- Steering axis line -->
+						{@const [saGx, saGy] = worldToScreen(fe.steeringAxisGround.x + offsetX, fe.steeringAxisGround.y + offsetY)}
+						{@const [saTx, saTy] = worldToScreen(fe.steeringAxisTop.x + offsetX, fe.steeringAxisTop.y + offsetY)}
+						<line x1={saGx} y1={saGy} x2={saTx} y2={saTy}
+							stroke={feColor} stroke-width="1.5" stroke-dasharray="6,3" opacity={feOpacity} />
+						<!-- Steering column (rectangle approximation) -->
+						{@const [scCx, scCy] = worldToScreen(fe.steeringColumnCenter.x + offsetX, fe.steeringColumnCenter.y + offsetY)}
+						{@const scHalfLen = (frontEndData?.steeringColumnHeightMm ?? 200) / 2 * zoom}
+						{@const scHalfW = 25 * zoom}
+						{@const feRakeRad = (frontEndData?.rakeAngleDeg ?? rakeAngleDeg) * Math.PI / 180}
+						{@const scDirX = Math.sin(feRakeRad)}
+						{@const scDirY = Math.cos(feRakeRad)}
+						{@const scPerpX = scDirY}
+						{@const scPerpY = -scDirX}
+						<polygon
+							points="{scCx + scHalfLen * scDirX + scHalfW * scPerpX},{scCy - scHalfLen * scDirY - scHalfW * scPerpY} {scCx + scHalfLen * scDirX - scHalfW * scPerpX},{scCy - scHalfLen * scDirY + scHalfW * scPerpY} {scCx - scHalfLen * scDirX - scHalfW * scPerpX},{scCy + scHalfLen * scDirY + scHalfW * scPerpY} {scCx - scHalfLen * scDirX + scHalfW * scPerpX},{scCy + scHalfLen * scDirY - scHalfW * scPerpY}"
+							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
+						<!-- Fork tubes -->
+						{@const [ftx, fty] = worldToScreen(fe.forkTop.x + offsetX, fe.forkTop.y + offsetY)}
+						{@const [fbx, fby] = worldToScreen(fe.forkBottom.x + offsetX, fe.forkBottom.y + offsetY)}
+						<line x1={ftx} y1={fty} x2={fbx} y2={fby}
+							stroke={feColor} stroke-width="2" opacity={feOpacity} />
+						<!-- Axle -->
+						{@const [axX, axY] = worldToScreen(fe.axleCenter.x + offsetX, fe.axleCenter.y + offsetY)}
+						<circle cx={axX} cy={axY} r={4} fill={feColor} opacity={feOpacity} />
+						<!-- Wheel -->
+						{@const wheelR = frontEndTire.outerRadiusMm * zoom}
+						<circle cx={axX} cy={axY} r={wheelR}
+							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity * 0.7} />
+						<!-- Tire section -->
+						{@const tireW = frontEndTire.sectionWidthMm * zoom * 0.3}
+						<circle cx={axX} cy={axY} r={wheelR}
+							fill="none" stroke={feColor} stroke-width={tireW} opacity={feOpacity * 0.15} />
+						<!-- Contact patch -->
+						{@const [cpx, cpy] = worldToScreen(fe.contactPatch.x + offsetX, fe.contactPatch.y + offsetY)}
+						<circle cx={cpx} cy={cpy} r={3} fill={feColor} opacity={feOpacity} />
+						<!-- Label -->
+						<text x={scCx + 15} y={scCy - scHalfLen - 10} fill={feColor} font-size="10" opacity={feOpacity}>
+							Front End
+						</text>
+					{/if}
 				{/if}
 
 				<!-- Dimension preview -->
@@ -1339,6 +1519,8 @@
 					{/if}
 				{:else if activeTool === 'constraint'}
 					Click a node to add constraint.
+				{:else if activeTool === 'anchor'}
+					Click to place {anchorSubType === 'front_anchor' ? 'Front End' : 'Rear End'} anchor. Only one of each allowed.
 				{:else if activeTool === 'edit'}
 					Click entity to edit properties.
 				{:else if activeTool === 'select'}

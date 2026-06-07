@@ -1581,13 +1581,15 @@
 					<div class="space-y-2">
 						<div>
 							<label class="text-gray-500 block mb-0.5">Wheelbase ({fmtUnit()})</label>
-							<input type="number" step="10" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
-								bind:value={wheelbaseMm} />
+							<input type="number" step={unitSystem === 'us' ? 0.25 : 10} class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
+								value={unitSystem === 'us' ? +(wheelbaseMm / 25.4).toFixed(3) : wheelbaseMm}
+								oninput={(e) => { const v = Number((e.target as HTMLInputElement).value); wheelbaseMm = unitSystem === 'us' ? v * 25.4 : v; }} />
 						</div>
 						<div>
 							<label class="text-gray-500 block mb-0.5">Seat height ({fmtUnit()})</label>
-							<input type="number" step="10" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
-								bind:value={seatHeightMm} />
+							<input type="number" step={unitSystem === 'us' ? 0.25 : 10} class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
+								value={unitSystem === 'us' ? +(seatHeightMm / 25.4).toFixed(3) : seatHeightMm}
+								oninput={(e) => { const v = Number((e.target as HTMLInputElement).value); seatHeightMm = unitSystem === 'us' ? v * 25.4 : v; }} />
 						</div>
 						<div>
 							<label class="text-gray-500 block mb-0.5">Rake angle (deg)</label>
@@ -1596,13 +1598,15 @@
 						</div>
 						<div>
 							<label class="text-gray-500 block mb-0.5">Front wheel radius ({fmtUnit()})</label>
-							<input type="number" step="1" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
-								bind:value={frontWheelRadiusMm} />
+							<input type="number" step={unitSystem === 'us' ? 0.125 : 1} class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
+								value={unitSystem === 'us' ? +(frontWheelRadiusMm / 25.4).toFixed(3) : frontWheelRadiusMm}
+								oninput={(e) => { const v = Number((e.target as HTMLInputElement).value); frontWheelRadiusMm = unitSystem === 'us' ? v * 25.4 : v; }} />
 						</div>
 						<div>
 							<label class="text-gray-500 block mb-0.5">Rear wheel radius ({fmtUnit()})</label>
-							<input type="number" step="1" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
-								bind:value={rearWheelRadiusMm} />
+							<input type="number" step={unitSystem === 'us' ? 0.125 : 1} class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs font-mono"
+								value={unitSystem === 'us' ? +(rearWheelRadiusMm / 25.4).toFixed(3) : rearWheelRadiusMm}
+								oninput={(e) => { const v = Number((e.target as HTMLInputElement).value); rearWheelRadiusMm = unitSystem === 'us' ? v * 25.4 : v; }} />
 						</div>
 					</div>
 				</div>

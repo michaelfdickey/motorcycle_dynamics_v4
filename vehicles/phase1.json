@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 2,
-  "savedAt": "2026-06-07T01:44:18.817Z",
+  "version": 4,
+  "savedAt": "2026-06-07T02:05:34.112Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -39,70 +39,335 @@
   "frame": {
     "nodes": [
       {
-        "id": "n_4",
-        "x": 107.94999999999999,
-        "y": 38.099999999999994,
+        "id": "n_47",
+        "x": 2489.2,
+        "y": 533.4,
         "type": "generic",
         "label": ""
       },
       {
-        "id": "n_5",
-        "x": 92.07499999999999,
-        "y": 19.049999999999997,
+        "id": "n_48",
+        "x": 2209.7999999999997,
+        "y": 762,
         "type": "generic",
         "label": ""
       },
       {
-        "id": "n_6",
-        "x": 12.7,
-        "y": 19.049999999999997,
+        "id": "n_49",
+        "x": 1397,
+        "y": 203.2,
         "type": "generic",
         "label": ""
       },
       {
-        "id": "n_7",
-        "x": 88.89999999999999,
-        "y": 50.8,
+        "id": "n_50",
+        "x": 2387.6,
+        "y": 203.2,
         "type": "generic",
         "label": ""
       },
       {
-        "id": "n_8",
-        "x": 47.625,
-        "y": 19.049999999999997,
+        "id": "n_55",
+        "x": 1701.8,
+        "y": 203.2,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_56",
+        "x": 1066.8,
+        "y": 990.5999999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_57",
+        "x": 1066.8,
+        "y": 1397,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_58",
+        "x": 914.4,
+        "y": 1397,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_59",
+        "x": 381,
+        "y": 1117.6,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_60",
+        "x": 381,
+        "y": 990.5999999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_67",
+        "x": 1016,
+        "y": 990.5999999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_68",
+        "x": 1016,
+        "y": 203.2,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_69",
+        "x": 660.4,
+        "y": 203.2,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_70",
+        "x": 660.4,
+        "y": 990.5999999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_74",
+        "x": 457.2,
+        "y": 203.2,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_75",
+        "x": 482.59999999999997,
+        "y": 685.8,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_78",
+        "x": 1016,
+        "y": 685.8,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_79",
+        "x": 660.4,
+        "y": 685.8,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_87",
+        "x": 1016,
+        "y": 76.19999999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_88",
+        "x": 1397,
+        "y": 76.19999999999999,
         "type": "generic",
         "label": ""
       }
     ],
     "members": [
       {
-        "id": "m_9",
-        "startId": "n_8",
-        "endId": "n_7",
+        "id": "m_51",
+        "startId": "n_50",
+        "endId": "n_47",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
       },
       {
-        "id": "m_10",
-        "startId": "n_7",
-        "endId": "n_4",
+        "id": "m_52",
+        "startId": "n_47",
+        "endId": "n_48",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
       },
       {
-        "id": "m_11",
-        "startId": "n_5",
-        "endId": "n_4",
+        "id": "m_53",
+        "startId": "n_48",
+        "endId": "n_49",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
       },
       {
-        "id": "m_12",
-        "startId": "n_5",
-        "endId": "n_6",
+        "id": "m_54",
+        "startId": "n_49",
+        "endId": "n_50",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_61",
+        "startId": "n_55",
+        "endId": "n_56",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_62",
+        "startId": "n_56",
+        "endId": "n_57",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_63",
+        "startId": "n_57",
+        "endId": "n_58",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_64",
+        "startId": "n_58",
+        "endId": "n_59",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_65",
+        "startId": "n_59",
+        "endId": "n_60",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_66",
+        "startId": "n_60",
+        "endId": "n_56",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_71",
+        "startId": "n_49",
+        "endId": "n_68",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_76",
+        "startId": "n_68",
+        "endId": "n_69",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_77",
+        "startId": "n_69",
+        "endId": "n_74",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_80",
+        "startId": "n_68",
+        "endId": "n_78",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_81",
+        "startId": "n_78",
+        "endId": "n_67",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_82",
+        "startId": "n_79",
+        "endId": "n_70",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_83",
+        "startId": "n_69",
+        "endId": "n_79",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_84",
+        "startId": "n_78",
+        "endId": "n_79",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_85",
+        "startId": "n_79",
+        "endId": "n_75",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_89",
+        "startId": "n_88",
+        "endId": "n_50",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_92",
+        "startId": "n_88",
+        "endId": "n_49",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_94",
+        "startId": "n_74",
+        "endId": "n_87",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_95",
+        "startId": "n_87",
+        "endId": "n_68",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_96",
+        "startId": "n_87",
+        "endId": "n_88",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
@@ -111,12 +376,12 @@
     "constraints": [],
     "dimensions": [],
     "refLines": [],
-    "wheelbaseMm": 110,
-    "seatHeightMm": 800,
-    "rakeAngleDeg": 27,
-    "frontWheelRadiusMm": 24,
-    "rearWheelRadiusMm": 30,
-    "nextId": 13,
+    "wheelbaseMm": 2794,
+    "seatHeightMm": 406.4,
+    "rakeAngleDeg": 45,
+    "frontWheelRadiusMm": 304.79999999999995,
+    "rearWheelRadiusMm": 406.4,
+    "nextId": 97,
     "layers": {
       "wheels": true,
       "frontEnd": true,

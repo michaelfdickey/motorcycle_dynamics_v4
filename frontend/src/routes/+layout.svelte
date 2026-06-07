@@ -5,11 +5,11 @@
 
 	const tabs = [
 		{ label: 'Home', href: '/' },
+		{ label: 'Frame', href: '/frame' },
 		{ label: 'Front End', href: '/front-end' },
 		{ label: 'Rear End', href: '/rear-end' },
 		{ label: 'Brakes', href: '/brakes' },
 		{ label: 'Suspension', href: '/suspension' },
-		{ label: 'Frame', href: '/frame' },
 		{ label: 'Kinematics', href: '/kinematics' },
 		{ label: 'Geometry', href: '/geometry' },
 		{ label: 'Aero / CFD', href: '/aero-cfd' },

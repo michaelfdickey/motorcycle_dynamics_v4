@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 1,
-  "savedAt": "2026-06-06T23:37:17.353Z",
+  "version": 2,
+  "savedAt": "2026-06-07T01:44:18.817Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -35,5 +35,102 @@
       "frontTireGrip": 1.2,
       "rearTireGrip": 1.1
     }
+  },
+  "frame": {
+    "nodes": [
+      {
+        "id": "n_4",
+        "x": 107.94999999999999,
+        "y": 38.099999999999994,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_5",
+        "x": 92.07499999999999,
+        "y": 19.049999999999997,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_6",
+        "x": 12.7,
+        "y": 19.049999999999997,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_7",
+        "x": 88.89999999999999,
+        "y": 50.8,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_8",
+        "x": 47.625,
+        "y": 19.049999999999997,
+        "type": "generic",
+        "label": ""
+      }
+    ],
+    "members": [
+      {
+        "id": "m_9",
+        "startId": "n_8",
+        "endId": "n_7",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_10",
+        "startId": "n_7",
+        "endId": "n_4",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_11",
+        "startId": "n_5",
+        "endId": "n_4",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_12",
+        "startId": "n_5",
+        "endId": "n_6",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      }
+    ],
+    "constraints": [],
+    "dimensions": [],
+    "refLines": [],
+    "wheelbaseMm": 110,
+    "seatHeightMm": 800,
+    "rakeAngleDeg": 27,
+    "frontWheelRadiusMm": 24,
+    "rearWheelRadiusMm": 30,
+    "nextId": 13,
+    "layers": {
+      "wheels": true,
+      "frontEnd": true,
+      "rearEnd": true,
+      "frame": true,
+      "anchors": true,
+      "steering": true,
+      "rearModule": true,
+      "rider": false,
+      "constraints": true,
+      "dimensions": true,
+      "reflines": true
+    },
+    "unitSystem": "us",
+    "viewSide": "right"
   }
 }

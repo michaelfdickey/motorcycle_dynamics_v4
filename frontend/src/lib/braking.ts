@@ -5,16 +5,40 @@
  * and combined front/rear braking dynamics.
  */
 
+export interface PistonGroup {
+	count: number;               // number of pistons at this diameter
+	diameterMm: number;          // piston bore diameter
+}
+
 export interface BrakeParams {
 	discDiameterMm: number;      // rotor diameter
 	discThicknessMm: number;     // rotor thickness
-	numberOfPots: number;        // caliper pistons
-	pistonDiameterMm: number;    // single piston diameter
+	pistons: PistonGroup[];      // caliper piston groups (supports mixed sizes)
 	padCoefficientOfFriction: number; // mu of brake pad material
 	padAreaMm2: number;          // contact area per pad
 	masterCylinderDiaMm: number; // master cylinder bore diameter
 	leverRatio: number;          // mechanical advantage of lever/pedal
 	dualSided: boolean;          // true = calipers on both sides of disc
+}
+
+/** Total piston area across all groups */
+export function totalPistonArea(pistons: PistonGroup[]): number {
+	return pistons.reduce((sum, g) => sum + g.count * Math.PI * (g.diameterMm / 2) ** 2, 0);
+}
+
+/** Total pot count across all groups */
+export function totalPotCount(pistons: PistonGroup[]): number {
+	return pistons.reduce((sum, g) => sum + g.count, 0);
+}
+
+/** Migrate legacy BrakeParams that used numberOfPots/pistonDiameterMm */
+export function migrateBrakeParams(raw: any): BrakeParams {
+	if (raw.pistons) return raw as BrakeParams;
+	// Legacy format
+	const count = raw.numberOfPots ?? 2;
+	const dia = raw.pistonDiameterMm ?? 30;
+	const { numberOfPots, pistonDiameterMm, ...rest } = raw;
+	return { ...rest, pistons: [{ count, diameterMm: dia }] };
 }
 
 export interface VehicleParams {
@@ -77,12 +101,11 @@ const G = 9.81;
 
 /** Calculate clamping force from hydraulic brake system */
 function clampingForce(brake: BrakeParams, inputForceN: number): number {
-	// Hydraulic ratio: (piston area * numPots) / master cylinder area
-	const pistonArea = Math.PI * (brake.pistonDiameterMm / 2) ** 2;
+	// Hydraulic ratio: total piston area / master cylinder area
+	const totalPiston = totalPistonArea(brake.pistons);
 	const masterArea = Math.PI * (brake.masterCylinderDiaMm / 2) ** 2;
-	const hydraulicRatio = (pistonArea * brake.numberOfPots) / masterArea;
+	const hydraulicRatio = totalPiston / masterArea;
 	// Total clamping force = lever force * lever ratio * hydraulic ratio
-	// Factor of 2 because pads clamp both sides of disc
 	return inputForceN * brake.leverRatio * hydraulicRatio;
 }
 
@@ -251,8 +274,7 @@ export function defaultFrontBrake(): BrakeParams {
 	return {
 		discDiameterMm: 320,
 		discThicknessMm: 5,
-		numberOfPots: 4,
-		pistonDiameterMm: 30,
+		pistons: [{ count: 4, diameterMm: 30 }],
 		padCoefficientOfFriction: 0.45,
 		padAreaMm2: 2400,
 		masterCylinderDiaMm: 16,
@@ -266,8 +288,7 @@ export function defaultRearBrake(): BrakeParams {
 	return {
 		discDiameterMm: 220,
 		discThicknessMm: 5,
-		numberOfPots: 2,
-		pistonDiameterMm: 34,
+		pistons: [{ count: 2, diameterMm: 34 }],
 		padCoefficientOfFriction: 0.42,
 		padAreaMm2: 1200,
 		masterCylinderDiaMm: 14,

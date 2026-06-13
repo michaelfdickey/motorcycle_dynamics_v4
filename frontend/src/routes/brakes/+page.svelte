@@ -4,7 +4,11 @@
 		defaultFrontBrake,
 		defaultRearBrake,
 		defaultVehicleParams,
+		migrateBrakeParams,
+		totalPotCount,
+		totalPistonArea,
 		type BrakeParams,
+		type PistonGroup,
 		type VehicleParams,
 		type BrakingResults,
 	} from '$lib/braking';
@@ -74,8 +78,8 @@
 		if (!design) return;
 		vehicleName = design.name;
 		if (design.brakes) {
-			frontBrake = { ...defaultFrontBrake(), ...design.brakes.frontBrake } as BrakeParams;
-			rearBrake = { ...defaultRearBrake(), ...design.brakes.rearBrake } as BrakeParams;
+			frontBrake = migrateBrakeParams({ ...defaultFrontBrake(), ...design.brakes.frontBrake });
+			rearBrake = migrateBrakeParams({ ...defaultRearBrake(), ...design.brakes.rearBrake });
 			vehicle = { ...defaultVehicleParams(), ...design.brakes.vehicle } as VehicleParams;
 		}
 		loadModalVisible = false;
@@ -126,8 +130,8 @@
 			const raw = localStorage.getItem(BRAKES_STORAGE_KEY);
 			if (!raw) return;
 			const s = JSON.parse(raw);
-			if (s.frontBrake) frontBrake = { ...defaultFrontBrake(), ...s.frontBrake };
-			if (s.rearBrake) rearBrake = { ...defaultRearBrake(), ...s.rearBrake };
+			if (s.frontBrake) frontBrake = migrateBrakeParams({ ...defaultFrontBrake(), ...s.frontBrake });
+			if (s.rearBrake) rearBrake = migrateBrakeParams({ ...defaultRearBrake(), ...s.rearBrake });
 			if (s.vehicle) vehicle = { ...defaultVehicleParams(), ...s.vehicle };
 			if (s.frontLeverForceN != null) frontLeverForceN = s.frontLeverForceN;
 			if (s.rearPedalForceN != null) rearPedalForceN = s.rearPedalForceN;
@@ -176,6 +180,10 @@
 
 	// Road offset for motion markers
 	let roadOffset = $state(0);
+
+	// Parallax offsets (pixels, accumulated)
+	let farBgOffset = $state(0);   // mountains — slow
+	let nearBgOffset = $state(0);  // trees — medium
 
 	// Pitch animation — eases toward target instead of snapping
 	let simPitchTarget = $state(0);  // target pitch from physics
@@ -317,6 +325,8 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		frontWheelAngleDeg = 0;
 		rearWheelAngleDeg = 0;
 		roadOffset = 0;
+		farBgOffset = 0;
+		nearBgOffset = 0;
 		lastTimestamp = null;
 		simRunning = true;
 		simPaused = false;
@@ -435,8 +445,13 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		rearWheelAngleDeg += dirMul * (distStep / rearRadM) * (180 / Math.PI);
 
 		// Road offset for motion markers — direction depends on view side
-		roadOffset = (roadOffset + dirMul * distStep * scale * 1000) % roadMarkerSpacing;
+		const pxStep = dirMul * distStep * scale * 1000;
+		roadOffset = (roadOffset + pxStep) % roadMarkerSpacing;
 		if (roadOffset < 0) roadOffset += roadMarkerSpacing;
+
+		// Parallax layers
+		farBgOffset += pxStep * 0.04;
+		nearBgOffset += pxStep * 0.175;
 
 		animationId = requestAnimationFrame(tick);
 	}
@@ -466,6 +481,8 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		frontWheelAngleDeg = 0;
 		rearWheelAngleDeg = 0;
 		roadOffset = 0;
+		farBgOffset = 0;
+		nearBgOffset = 0;
 		if (animationId) cancelAnimationFrame(animationId);
 	}
 
@@ -592,6 +609,29 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						</marker>
 					</defs>
 
+					<!-- ═══ FAR BACKGROUND — mountains/hills (very slow parallax) ═══ -->
+					{#each Array.from({length: Math.ceil(svgWidth / 440) + 3}, (_, i) => i) as i}
+						{@const mx = i * 440 - ((farBgOffset % 440) + 440) % 440 - 220}
+						<polygon points="{mx},{groundY} {mx + 220},{groundY - 260} {mx + 440},{groundY}"
+							fill="#1a1a2e" stroke="none" />
+						<polygon points="{mx + 160},{groundY} {mx + 300},{groundY - 170} {mx + 480},{groundY}"
+							fill="#16162a" stroke="none" />
+					{/each}
+					<line x1="0" y1={groundY} x2={svgWidth} y2={groundY} stroke="#222" stroke-width="0.5" />
+
+					<!-- ═══ NEAR BACKGROUND — trees (medium parallax) ═══ -->
+					{#each Array.from({length: Math.ceil(svgWidth / 180) + 3}, (_, i) => i) as i}
+						{@const tx = i * 180 - ((nearBgOffset % 180) + 180) % 180 - 90}
+						{@const worldIdx = i + Math.floor(nearBgOffset / 180)}
+						{@const treeH = 165 + (((worldIdx % 3) + 3) % 3) * 40}
+						<line x1={tx} y1={groundY} x2={tx} y2={groundY - treeH + 45}
+							stroke="#2a1f14" stroke-width="8" />
+						<polygon points="{tx},{groundY - treeH} {tx - 42},{groundY - treeH + 90} {tx + 42},{groundY - treeH + 90}"
+							fill="#1a3a1a" stroke="none" />
+						<polygon points="{tx},{groundY - treeH + 36} {tx - 54},{groundY - treeH + 126} {tx + 54},{groundY - treeH + 126}"
+							fill="#153015" stroke="none" />
+					{/each}
+
 					<!-- Road surface -->
 					<line x1="0" y1={groundY} x2={svgWidth} y2={groundY} stroke="#666" stroke-width="1.5" />
 					<!-- Road motion markers (scroll left during braking) -->
@@ -673,11 +713,11 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					<!-- Disc labels (not pitched) -->
 					<text x={frontWheelX} y={groundY - frontWheelR - frontDiscR - 12}
 						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{Math.round(frontBrake.discDiameterMm)} / {frontBrake.numberOfPots}-pot
+						Ø{Math.round(frontBrake.discDiameterMm)} / {totalPotCount(frontBrake.pistons)}-pot
 					</text>
 					<text x={rearWheelX} y={groundY - rearWheelR - rearDiscR - 12}
 						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{Math.round(rearBrake.discDiameterMm)} / {rearBrake.numberOfPots}-pot
+						Ø{Math.round(rearBrake.discDiameterMm)} / {totalPotCount(rearBrake.pistons)}-pot
 					</text>
 
 					<!-- Thermal load per rotor (above wheels) -->
@@ -932,18 +972,35 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						<input type="number" value={+mmToIn(frontBrake.discDiameterMm).toFixed(2)} oninput={(e) => { frontBrake.discDiameterMm = inToMm(+e.currentTarget.value); }} step="0.1"
 							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
 					</div>
-					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Pots</span>
-						<input type="number" value={frontBrake.numberOfPots} oninput={(e) => { frontBrake.numberOfPots = +e.currentTarget.value; }} min="1" max="8" step="1"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
-						<span class="text-center text-[10px] text-gray-600">—</span>
-					</div>
-					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Piston Ø</span>
-						<input type="number" value={frontBrake.pistonDiameterMm} oninput={(e) => { frontBrake.pistonDiameterMm = +e.currentTarget.value; }} step="1"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
-						<input type="number" value={+mmToIn(frontBrake.pistonDiameterMm).toFixed(3)} oninput={(e) => { frontBrake.pistonDiameterMm = inToMm(+e.currentTarget.value); }} step="0.01"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
+					<!-- Piston groups (dynamic list) -->
+					<div class="text-gray-400">
+						<div class="flex items-center justify-between mb-1">
+							<span class="text-xs">Pistons ({totalPotCount(frontBrake.pistons)} pots, {totalPistonArea(frontBrake.pistons).toFixed(0)} mm²)</span>
+							<button onclick={() => { frontBrake.pistons = [...frontBrake.pistons, { count: 1, diameterMm: 30 }]; }}
+								class="px-1.5 py-0.5 text-[10px] rounded bg-gray-700 hover:bg-gray-600 text-gray-300">+ Add Size</button>
+						</div>
+						{#each frontBrake.pistons as group, i}
+							<div class="grid grid-cols-[40px_1fr_1fr_20px] gap-1 items-center mb-1">
+								<input type="number" value={group.count} oninput={(e) => { frontBrake.pistons[i].count = Math.max(1, +e.currentTarget.value); }} min="1" max="8" step="1"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Quantity" />
+								<input type="number" value={group.diameterMm} oninput={(e) => { frontBrake.pistons[i].diameterMm = +e.currentTarget.value; }} step="0.5"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Diameter (mm)" />
+								<input type="number" value={+(group.diameterMm / MM_PER_INCH).toFixed(3)} oninput={(e) => { frontBrake.pistons[i].diameterMm = +e.currentTarget.value * MM_PER_INCH; }} step="0.01"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Diameter (in)" />
+								{#if frontBrake.pistons.length > 1}
+									<button onclick={() => { frontBrake.pistons = frontBrake.pistons.filter((_, j) => j !== i); }}
+										class="text-gray-500 hover:text-red-400 text-xs leading-none" title="Remove">×</button>
+								{:else}
+									<span></span>
+								{/if}
+							</div>
+						{/each}
+						<div class="grid grid-cols-[40px_1fr_1fr_20px] gap-1 text-[9px] text-gray-600 -mt-0.5">
+							<span class="text-center">Qty</span>
+							<span class="text-center">mm</span>
+							<span class="text-center">in</span>
+							<span></span>
+						</div>
 					</div>
 					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
 						<span class="text-xs">Pad μ</span>
@@ -986,18 +1043,35 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						<input type="number" value={+mmToIn(rearBrake.discDiameterMm).toFixed(2)} oninput={(e) => { rearBrake.discDiameterMm = inToMm(+e.currentTarget.value); }} step="0.1"
 							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
 					</div>
-					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Pots</span>
-						<input type="number" value={rearBrake.numberOfPots} oninput={(e) => { rearBrake.numberOfPots = +e.currentTarget.value; }} min="1" max="6" step="1"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
-						<span class="text-center text-[10px] text-gray-600">—</span>
-					</div>
-					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
-						<span class="text-xs">Piston Ø</span>
-						<input type="number" value={rearBrake.pistonDiameterMm} oninput={(e) => { rearBrake.pistonDiameterMm = +e.currentTarget.value; }} step="1"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
-						<input type="number" value={+mmToIn(rearBrake.pistonDiameterMm).toFixed(3)} oninput={(e) => { rearBrake.pistonDiameterMm = inToMm(+e.currentTarget.value); }} step="0.01"
-							class="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-gray-100 text-right text-xs" />
+					<!-- Piston groups (dynamic list) -->
+					<div class="text-gray-400">
+						<div class="flex items-center justify-between mb-1">
+							<span class="text-xs">Pistons ({totalPotCount(rearBrake.pistons)} pots, {totalPistonArea(rearBrake.pistons).toFixed(0)} mm²)</span>
+							<button onclick={() => { rearBrake.pistons = [...rearBrake.pistons, { count: 1, diameterMm: 30 }]; }}
+								class="px-1.5 py-0.5 text-[10px] rounded bg-gray-700 hover:bg-gray-600 text-gray-300">+ Add Size</button>
+						</div>
+						{#each rearBrake.pistons as group, i}
+							<div class="grid grid-cols-[40px_1fr_1fr_20px] gap-1 items-center mb-1">
+								<input type="number" value={group.count} oninput={(e) => { rearBrake.pistons[i].count = Math.max(1, +e.currentTarget.value); }} min="1" max="8" step="1"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Quantity" />
+								<input type="number" value={group.diameterMm} oninput={(e) => { rearBrake.pistons[i].diameterMm = +e.currentTarget.value; }} step="0.5"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Diameter (mm)" />
+								<input type="number" value={+(group.diameterMm / MM_PER_INCH).toFixed(3)} oninput={(e) => { rearBrake.pistons[i].diameterMm = +e.currentTarget.value * MM_PER_INCH; }} step="0.01"
+									class="w-full rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-gray-100 text-right text-xs" title="Diameter (in)" />
+								{#if rearBrake.pistons.length > 1}
+									<button onclick={() => { rearBrake.pistons = rearBrake.pistons.filter((_, j) => j !== i); }}
+										class="text-gray-500 hover:text-red-400 text-xs leading-none" title="Remove">×</button>
+								{:else}
+									<span></span>
+								{/if}
+							</div>
+						{/each}
+						<div class="grid grid-cols-[40px_1fr_1fr_20px] gap-1 text-[9px] text-gray-600 -mt-0.5">
+							<span class="text-center">Qty</span>
+							<span class="text-center">mm</span>
+							<span class="text-center">in</span>
+							<span></span>
+						</div>
 					</div>
 					<div class="grid grid-cols-[1fr_80px_80px] gap-1 items-center text-gray-400">
 						<span class="text-xs">Pad μ</span>

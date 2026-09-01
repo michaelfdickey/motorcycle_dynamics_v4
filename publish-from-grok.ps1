@@ -63,7 +63,7 @@ if (Test-Path $vehiclesDst) {
 }
 
 $xd = @("node_modules", ".venv", ".git", ".svelte-kit", "__pycache__", "playwright", "playwright-core")
-$xf = @(".backend.pid", ".frontend.pid", "shop-photo-mule.jpg")
+$xf = @(".backend.pid", ".frontend.pid")
 $roboArgs = @(
 	$src, $dst, "/E", "/XD"
 ) + $xd + @("/XF") + $xf + @("/NFL", "/NDL", "/NJH", "/NJS", "/NP")

@@ -122,10 +122,14 @@ if ($trackedDirty) {
 	git -C $src checkout -- .
 }
 # Untracked files that already exist on origin/main would block the pull.
-$untracked = git -C $src ls-files --others --exclude-standard
+$untracked = @(git -C $src ls-files --others --exclude-standard)
 foreach ($f in $untracked) {
-	git -C $src cat-file -e "origin/main:$f" 2>$null
-	if ($LASTEXITCODE -eq 0) {
+	$oldEap = $ErrorActionPreference
+	$ErrorActionPreference = "SilentlyContinue"
+	git -C $src cat-file -e "origin/main:$f" 2>$null | Out-Null
+	$onOrigin = ($LASTEXITCODE -eq 0)
+	$ErrorActionPreference = $oldEap
+	if ($onOrigin) {
 		Remove-Item -LiteralPath (Join-Path $src $f) -Force
 		Write-Host "Removed untracked $f (already on origin/main)"
 	}

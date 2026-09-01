@@ -42,3 +42,13 @@ frontend/         SvelteKit app (UI, visualization)
 tech_stack.md     Architecture documentation
 launcher.sh       Launch/restart script
 ```
+
+## Publish (Grok worktree → local clone → GitHub)
+
+Work in the Grok worktree. To send those files to `D:\repositories\motorcycle_dynamics_v4` and then GitHub:
+
+```powershell
+.\publish-from-grok.ps1
+```
+
+Vehicle JSON in `vehicles/` is chosen by newest `savedAt`, even if the other copy was saved later in the app. PID files, `node_modules`, and `.venv` are not copied.

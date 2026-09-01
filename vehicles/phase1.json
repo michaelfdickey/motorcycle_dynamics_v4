@@ -1,7 +1,7 @@
 {
   "name": "phase1",
   "version": 1,
-  "savedAt": "2026-09-01T22:48:45.016Z",
+  "savedAt": "2026-09-01T22:56:59.545Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -40,7 +40,7 @@
     "suspensionType": "leading_link",
     "tireDesignation": "140/75R17",
     "rakeAngleDeg": 45,
-    "forkOffsetMm": 70,
+    "forkOffsetMm": 75,
     "forkLengthMm": 595,
     "forkTravelMm": 40,
     "compressionPct": 10,
@@ -52,10 +52,10 @@
     "spindleHeightMm": 47.4,
     "suspensionOffsetMm": 107,
     "suspensionHeightMm": -10.6,
-    "suspUpperMountHeightMm": -67,
-    "suspUpperMountOffsetMm": 96,
-    "linkLengthMm": 155,
-    "linkOffsetMm": 30
+    "suspUpperMountHeightMm": -60,
+    "suspUpperMountOffsetMm": 121,
+    "linkLengthMm": 165,
+    "linkOffsetMm": 37
   },
   "frame": {
     "nodes": [

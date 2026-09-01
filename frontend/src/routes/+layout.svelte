@@ -53,7 +53,7 @@
 		</nav>
 	</header>
 
-	<main class="mx-auto max-w-[120rem] px-6 py-8">
+	<main class="mx-auto max-w-[120rem] px-6 {page.url.pathname.startsWith('/frame') ? 'py-3' : 'py-8'}">
 		{@render children()}
 	</main>
 

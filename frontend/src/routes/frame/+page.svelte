@@ -751,15 +751,15 @@
 	const active = $derived(models[activeTab]);
 </script>
 
-<div class="space-y-6">
-	<h2 class="text-2xl font-bold">Frame</h2>
+<div class="space-y-3">
+	<h2 class="text-lg font-bold">Frame</h2>
 
-	<!-- Sub-tabs -->
-	<div class="flex flex-wrap gap-1 border-b border-gray-800 pb-1">
+	<!-- Sub-tabs: 0 is the editor; 1–10 remain notes only -->
+	<div class="flex flex-nowrap gap-1 border-b border-gray-800 pb-1 overflow-x-auto">
 		{#each models as m}
 			<button
 				type="button"
-				class="px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors whitespace-nowrap
+				class="px-2 py-1 text-[11px] font-medium rounded-t-md transition-colors whitespace-nowrap
 					{activeTab === m.id
 						? 'bg-gray-800 text-orange-400 border-t border-x border-orange-500/40'
 						: 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/50'}"
@@ -773,41 +773,18 @@
 	<!-- Active model detail -->
 	{#if activeTab === 0}
 		<GeometryLayoutEditor />
-		<!-- Description below editor -->
-		<div class="rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6 mt-4">
-			<div>
-				<h3 class="text-lg font-semibold text-gray-100">{active.title}</h3>
-				<span class="inline-block mt-1 px-2 py-0.5 text-[10px] uppercase tracking-widest rounded bg-gray-800 text-gray-500">Level {active.id}</span>
-			</div>
-			<div>
-				<h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Model Summary</h4>
-				<p class="text-sm text-gray-300 leading-relaxed">{active.summary}</p>
-			</div>
-			<div>
-				<h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Technical Description</h4>
-				<p class="text-sm text-gray-400 leading-relaxed">{active.technical}</p>
-			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
-				{#each active.sections as section}
-					<div class="rounded border border-gray-800 bg-gray-950 p-3">
-						<h5 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{section.heading}</h5>
-						<ul class="space-y-1">
-							{#each section.items as item}
-								<li class="text-sm text-gray-400 flex gap-2">
-									<span class="text-gray-600 shrink-0">&bull;</span>
-									<span>{item}</span>
-								</li>
-							{/each}
-						</ul>
-					</div>
-				{/each}
-			</div>
-			{#if active.note}
-				<div class="rounded border border-orange-500/20 bg-orange-500/5 px-4 py-3">
-					<p class="text-sm text-orange-300/80"><span class="font-semibold text-orange-400">Note:</span> {active.note}</p>
+		<details class="rounded-lg border border-gray-800 bg-gray-900 mt-1">
+			<summary class="cursor-pointer select-none px-3 py-1.5 text-[11px] text-gray-500 hover:text-gray-300">
+				Geometry layout notes
+			</summary>
+			<div class="p-4 space-y-4 border-t border-gray-800">
+				<div>
+					<h3 class="text-sm font-semibold text-gray-100">{active.title}</h3>
+					<span class="inline-block mt-1 px-2 py-0.5 text-[10px] uppercase tracking-widest rounded bg-gray-800 text-gray-500">Level {active.id}</span>
 				</div>
-			{/if}
-		</div>
+				<p class="text-sm text-gray-400 leading-relaxed">{active.summary}</p>
+			</div>
+		</details>
 	{:else}
 	<div class="rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6">
 		<!-- Header -->

@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { listVehicles, saveVehicleDesign, loadVehicleDesign, getLastFileName, setLastFileName, type VehicleDesign } from '$lib/vehicleStore';
 	import { computeFrontEnd, type FrontEndResults, type FrontEndInputs } from '$lib/frontEndGeometry';
 	import { parseTireDesignation, computeTireDimensions, type TireDimensions } from '$lib/tire';
+	import { saveRefImageBlob, loadRefImageBlob, clearRefImageBlob } from '$lib/refImageCache';
 
 	// ── Types ──
 	type Tool = 'select' | 'node' | 'member' | 'constraint' | 'dimension' | 'refline' | 'edit' | 'anchor';
@@ -98,6 +100,7 @@
 	let showSnapMenu = $state(false);
 	let showDisplayMenu = $state(false);
 	let showAnchorMenu = $state(false);
+	let showPhotoMenu = $state(false);
 	let anchorSubType = $state<'front_anchor' | 'rear_anchor'>('front_anchor');
 
 	// Unit system
@@ -209,12 +212,217 @@
 		reflines: 'Reference Lines',
 	};
 
-	// Global vehicle params
-	let wheelbaseMm = $state(1500);
-	let seatHeightMm = $state(800);
-	let rakeAngleDeg = $state(27);
-	let frontWheelRadiusMm = $state(312);
-	let rearWheelRadiusMm = $state(312);
+	// Envelope fallbacks are the Phase 1 mule, not a sport-bike (1500 mm / 27° / 312 mm).
+	const MULE_WHEELBASE_MM = 2794;
+	const MULE_SEAT_HEIGHT_MM = 406.4;
+	const MULE_RAKE_DEG = 45;
+	const MULE_FRONT_RADIUS_MM = 320;
+	const MULE_REAR_RADIUS_MM = 406.4;
+	const REF_IMAGE_FIT = 1.4;
+
+	// Global vehicle params — overwritten from the loaded vehicle when present
+	let wheelbaseMm = $state(MULE_WHEELBASE_MM);
+	let seatHeightMm = $state(MULE_SEAT_HEIGHT_MM);
+	let rakeAngleDeg = $state(MULE_RAKE_DEG);
+	let frontWheelRadiusMm = $state(MULE_FRONT_RADIUS_MM);
+	let rearWheelRadiusMm = $state(MULE_REAR_RADIUS_MM);
+
+	// Tracing photo (bitmap is local-only; transform may persist in frame JSON)
+	let refImageUrl = $state<string | null>(null);
+	let refImageFileName = $state('');
+	let refImageVisible = $state(true);
+	let refImageOpacity = $state(0.65);
+	let refImageOriginX = $state(0);
+	let refImageOriginY = $state(0);
+	let refImageWidthMm = $state(MULE_WHEELBASE_MM * REF_IMAGE_FIT);
+	let refImageAspect = $state(9 / 16);
+	let refImageAdjust = $state(false);
+	let refImageInput = $state<HTMLInputElement | null>(null);
+	let refImageDragOver = $state(false);
+	let draggingRefImage = $state(false);
+	let dragRefStartScreen = $state<[number, number]>([0, 0]);
+	let dragRefStartOrigin = $state<[number, number]>([0, 0]);
+	const refImageScalePct = $derived(Math.round(refImageWidthMm / Math.max(wheelbaseMm, 1) / REF_IMAGE_FIT * 100));
+
+	function num(v: unknown): number | undefined {
+		return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+	}
+
+	function isLegacySportBikeEnvelope(wb: number, rake: number, frontR: number): boolean {
+		return wb === 1500 && rake === 27 && frontR === 312;
+	}
+
+	function applyVehicleEnvelope(design: VehicleDesign) {
+		const f = (design.frame ?? {}) as Record<string, unknown>;
+		const v = (design.brakes?.vehicle ?? {}) as Record<string, unknown>;
+		const fe = (design.frontEnd ?? {}) as Record<string, unknown>;
+		const frameWb = num(f.wheelbaseMm);
+		const frameRake = num(f.rakeAngleDeg);
+		const frameFront = num(f.frontWheelRadiusMm);
+		const skipLegacyFrame = frameWb != null && frameRake != null && frameFront != null
+			&& isLegacySportBikeEnvelope(frameWb, frameRake, frameFront);
+
+		wheelbaseMm = (!skipLegacyFrame ? frameWb : undefined) ?? num(v.wheelbaseMm) ?? MULE_WHEELBASE_MM;
+		seatHeightMm = num(f.seatHeightMm) ?? MULE_SEAT_HEIGHT_MM;
+		rakeAngleDeg = (!skipLegacyFrame ? frameRake : undefined) ?? num(fe.rakeAngleDeg) ?? MULE_RAKE_DEG;
+		frontWheelRadiusMm = (!skipLegacyFrame ? frameFront : undefined) ?? num(v.frontTireRadiusMm) ?? MULE_FRONT_RADIUS_MM;
+		rearWheelRadiusMm = (!skipLegacyFrame ? num(f.rearWheelRadiusMm) : undefined) ?? num(v.rearTireRadiusMm) ?? MULE_REAR_RADIUS_MM;
+	}
+
+	function refImageTransform() {
+		return {
+			visible: refImageVisible,
+			opacity: refImageOpacity,
+			originX: refImageOriginX,
+			originY: refImageOriginY,
+			widthMm: refImageWidthMm,
+			aspect: refImageAspect,
+			fileName: refImageFileName,
+		};
+	}
+
+	function applyRefImageTransform(raw: unknown) {
+		if (!raw || typeof raw !== 'object') return;
+		const r = raw as Record<string, unknown>;
+		if (typeof r.visible === 'boolean') refImageVisible = r.visible;
+		if (typeof r.opacity === 'number') refImageOpacity = Math.min(1, Math.max(0.05, r.opacity));
+		if (typeof r.originX === 'number') refImageOriginX = r.originX;
+		if (typeof r.originY === 'number') refImageOriginY = r.originY;
+		if (typeof r.widthMm === 'number' && r.widthMm > 0) refImageWidthMm = r.widthMm;
+		if (typeof r.aspect === 'number' && r.aspect > 0) refImageAspect = r.aspect;
+		if (typeof r.fileName === 'string') refImageFileName = r.fileName;
+	}
+
+	function fitRefImageToWheelbase() {
+		refImageWidthMm = Math.max(100, wheelbaseMm * REF_IMAGE_FIT);
+		const heightMm = refImageWidthMm * refImageAspect;
+		refImageOriginX = -(refImageWidthMm - wheelbaseMm) / 2;
+		refImageOriginY = 0;
+		if (heightMm < frontWheelRadiusMm * 2) {
+			refImageOriginY = -(heightMm * 0.15);
+		}
+	}
+
+	function scaleRefImage(factor: number, centerX?: number, centerY?: number) {
+		const heightMm = refImageWidthMm * refImageAspect;
+		const cx = centerX ?? (refImageOriginX + refImageWidthMm / 2);
+		const cy = centerY ?? (refImageOriginY + heightMm / 2);
+		refImageWidthMm = Math.max(200, Math.min(30000, refImageWidthMm * factor));
+		const newH = refImageWidthMm * refImageAspect;
+		refImageOriginX = cx - refImageWidthMm / 2;
+		refImageOriginY = cy - newH / 2;
+	}
+
+	function revokeRefImageUrl() {
+		if (refImageUrl) {
+			URL.revokeObjectURL(refImageUrl);
+			refImageUrl = null;
+		}
+	}
+
+	async function applyRefImageFile(file: File) {
+		revokeRefImageUrl();
+		const url = URL.createObjectURL(file);
+		const img = new Image();
+		await new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve();
+			img.onerror = () => reject(new Error('image'));
+			img.src = url;
+		});
+		refImageUrl = url;
+		refImageFileName = file.name;
+		refImageAspect = img.naturalHeight > 0 && img.naturalWidth > 0
+			? img.naturalHeight / img.naturalWidth
+			: 9 / 16;
+		refImageVisible = true;
+		refImageAdjust = true;
+		if (refImageOpacity < 0.35) refImageOpacity = 0.65;
+		fitRefImageToWheelbase();
+		pendingFitView = true;
+		if (canvasW > 50 && canvasH > 50) {
+			resetView();
+			pendingFitView = false;
+		}
+		await saveRefImageBlob(file.name, file);
+	}
+
+	async function onRefImageChosen(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		try {
+			await applyRefImageFile(file);
+		} catch {
+			revokeRefImageUrl();
+		}
+		(e.target as HTMLInputElement).value = '';
+		showPhotoMenu = false;
+	}
+
+	function setRefImageScalePct(pct: number) {
+		const target = Math.max(200, wheelbaseMm * REF_IMAGE_FIT * (pct / 100));
+		scaleRefImage(target / Math.max(refImageWidthMm, 1));
+	}
+
+	async function importImageFile(file: File | null | undefined) {
+		if (!file || !file.type.startsWith('image/')) return;
+		try {
+			await applyRefImageFile(file);
+		} catch {
+			revokeRefImageUrl();
+		}
+	}
+
+	function onCanvasDragOver(e: DragEvent) {
+		if (e.dataTransfer?.types?.includes('Files')) {
+			e.preventDefault();
+			refImageDragOver = true;
+		}
+	}
+	function onCanvasDragLeave() {
+		refImageDragOver = false;
+	}
+	function onCanvasDrop(e: DragEvent) {
+		e.preventDefault();
+		refImageDragOver = false;
+		const file = [...(e.dataTransfer?.files ?? [])].find((f) => f.type.startsWith('image/'));
+		void importImageFile(file);
+	}
+
+	function onPaste(e: ClipboardEvent) {
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+		const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith('image/'));
+		if (!item) return;
+		e.preventDefault();
+		void importImageFile(item.getAsFile());
+	}
+
+	async function clearRefImage() {
+		revokeRefImageUrl();
+		refImageFileName = '';
+		refImageAdjust = false;
+		await clearRefImageBlob();
+		showPhotoMenu = false;
+	}
+
+	async function restoreRefImage() {
+		const cached = await loadRefImageBlob();
+		if (!cached) return;
+		revokeRefImageUrl();
+		const url = URL.createObjectURL(cached.blob);
+		const img = new Image();
+		await new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve();
+			img.onerror = () => reject(new Error('image'));
+			img.src = url;
+		});
+		refImageUrl = url;
+		if (!refImageFileName) refImageFileName = cached.fileName;
+		if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+			refImageAspect = img.naturalHeight / img.naturalWidth;
+		}
+	}
+
+	onDestroy(() => revokeRefImageUrl());
 
 	// Undo
 	type Snapshot = {
@@ -384,6 +592,7 @@
 		showDisplayMenu = false;
 		showClearMenu = false;
 		showAnchorMenu = false;
+		showPhotoMenu = false;
 
 		if (editPopupVisible && activeTool !== 'edit') {
 			editPopupVisible = false;
@@ -398,6 +607,13 @@
 		}
 
 		if (e.button !== 0) return;
+
+		if (refImageAdjust && refImageUrl && refImageVisible) {
+			draggingRefImage = true;
+			dragRefStartScreen = [sx, sy];
+			dragRefStartOrigin = [refImageOriginX, refImageOriginY];
+			return;
+		}
 
 		if (activeTool === 'select') {
 			const hit = findNodeNear(wx, wy);
@@ -568,6 +784,13 @@
 		mouseWorldX = snapWorld(wx);
 		mouseWorldY = snapWorld(wy);
 
+		if (draggingRefImage) {
+			const dx = (sx - dragRefStartScreen[0]) / zoom;
+			const dy = (sy - dragRefStartScreen[1]) / zoom;
+			refImageOriginX = dragRefStartOrigin[0] + (viewSide === 'right' ? dx : -dx);
+			refImageOriginY = dragRefStartOrigin[1] - dy;
+			return;
+		}
 		if (isPanning) {
 			const dx = (sx - panStartScreen[0]) / zoom;
 			const dy = (sy - panStartScreen[1]) / zoom;
@@ -585,6 +808,7 @@
 
 	function onPointerUp(_e: MouseEvent) {
 		isPanning = false;
+		draggingRefImage = false;
 		if (dragNode) {
 			dragNode = null;
 		}
@@ -601,6 +825,14 @@
 			} else {
 				reflinePreviewStyle = lineStyles[(idx - 1 + lineStyles.length) % lineStyles.length];
 			}
+			return;
+		}
+
+		if (refImageUrl && refImageVisible && (refImageAdjust || e.shiftKey)) {
+			const factor = e.deltaY > 0 ? 0.95 : 1.05;
+			const [imgSx, imgSy] = getSvgXY(e);
+			const [wx, wy] = screenToWorld(imgSx, imgSy);
+			scaleRefImage(factor, wx, wy);
 			return;
 		}
 
@@ -709,20 +941,21 @@
 			dimStartId = null;
 			reflineStart = null;
 			editPopupVisible = false;
+			refImageAdjust = false;
 		}
 		if (e.metaKey || e.ctrlKey) {
 			if (e.key === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
 			if (e.key === 'y') { e.preventDefault(); redo(); }
 		}
 		if (!(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLSelectElement)) {
-			if (e.key === 'v' || e.key === '1') activeTool = 'select';
-			if (e.key === 'n' || e.key === '2') activeTool = 'node';
-			if (e.key === 'm' || e.key === '3') activeTool = 'member';
-			if (e.key === 'c' || e.key === '4') activeTool = 'constraint';
-			if (e.key === 'd' || e.key === '5') activeTool = 'dimension';
-			if (e.key === 'r' || e.key === '6') activeTool = 'refline';
-			if (e.key === 'e' || e.key === '7') activeTool = 'edit';
-			if (e.key === 'a' || e.key === '8') activeTool = 'anchor';
+			if (e.key === 'v' || e.key === '1') { activeTool = 'select'; refImageAdjust = false; }
+			if (e.key === 'n' || e.key === '2') { activeTool = 'node'; refImageAdjust = false; }
+			if (e.key === 'm' || e.key === '3') { activeTool = 'member'; refImageAdjust = false; }
+			if (e.key === 'c' || e.key === '4') { activeTool = 'constraint'; refImageAdjust = false; }
+			if (e.key === 'd' || e.key === '5') { activeTool = 'dimension'; refImageAdjust = false; }
+			if (e.key === 'r' || e.key === '6') { activeTool = 'refline'; refImageAdjust = false; }
+			if (e.key === 'e' || e.key === '7') { activeTool = 'edit'; refImageAdjust = false; }
+			if (e.key === 'a' || e.key === '8') { activeTool = 'anchor'; refImageAdjust = false; }
 			if (e.key === 'g') showGrid = !showGrid;
 			if (e.key === 's' && !e.metaKey && !e.ctrlKey) showSnap = !showSnap;
 		}
@@ -738,13 +971,14 @@
 			frontWheelRadiusMm, rearWheelRadiusMm, nextId, layers, unitSystem, viewSide,
 			snapSizeUS, snapSizeMetric, showGrid, showSnap, showOrigin, showGround, showRefLines, showScale,
 			showFrontEnd, showRearEnd,
+			refImage: refImageTransform(),
 		};
 		try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 	}
-	function loadState() {
+	function loadState(): boolean {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
-			if (!raw) return;
+			if (!raw) return false;
 			const data = JSON.parse(raw);
 			nodes = data.nodes ?? [];
 			members = data.members ?? [];
@@ -754,11 +988,11 @@
 			panX = data.panX ?? 0;
 			panY = data.panY ?? 200;
 			zoom = data.zoom ?? 2;
-			wheelbaseMm = data.wheelbaseMm ?? 1500;
-			seatHeightMm = data.seatHeightMm ?? 800;
-			rakeAngleDeg = data.rakeAngleDeg ?? 27;
-			frontWheelRadiusMm = data.frontWheelRadiusMm ?? 312;
-			rearWheelRadiusMm = data.rearWheelRadiusMm ?? 312;
+			wheelbaseMm = data.wheelbaseMm ?? MULE_WHEELBASE_MM;
+			seatHeightMm = data.seatHeightMm ?? MULE_SEAT_HEIGHT_MM;
+			rakeAngleDeg = data.rakeAngleDeg ?? MULE_RAKE_DEG;
+			frontWheelRadiusMm = data.frontWheelRadiusMm ?? MULE_FRONT_RADIUS_MM;
+			rearWheelRadiusMm = data.rearWheelRadiusMm ?? MULE_REAR_RADIUS_MM;
 			nextId = data.nextId ?? 1;
 			unitSystem = data.unitSystem ?? 'metric';
 			viewSide = data.viewSide ?? 'right';
@@ -777,15 +1011,62 @@
 					if (k in data.layers) (layers as any)[k] = data.layers[k];
 				}
 			}
-		} catch {}
+			applyRefImageTransform(data.refImage);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
-	$effect(() => { loadState(); loadFrontEndData(); });
+	let didHydrate = false;
+	let pendingFitView = $state(false);
+	$effect(() => {
+		if (didHydrate) return;
+		didHydrate = true;
+		const hadLocal = loadState();
+		void (async () => {
+			await restoreRefImage();
+			const name = getLastFileName();
+			const design = name ? await loadVehicleDesign(name) : null;
+			const usedLegacy = isLegacySportBikeEnvelope(wheelbaseMm, rakeAngleDeg, frontWheelRadiusMm);
+			if (design) {
+				if (!hadLocal) {
+					if (design.frame) {
+						const f = design.frame as Record<string, unknown>;
+						nodes = (f.nodes as LayoutNode[]) ?? [];
+						members = (f.members as FrameMember[]) ?? [];
+						constraints = (f.constraints as Constraint[]) ?? [];
+						dimensions = (f.dimensions as Dimension[]) ?? [];
+						refLines = (f.refLines as RefLine[]) ?? [];
+						nextId = num(f.nextId) ?? 1;
+						unitSystem = (f.unitSystem as UnitSystem) ?? 'metric';
+						viewSide = (f.viewSide as ViewSide) ?? 'right';
+						if (f.layers && typeof f.layers === 'object') {
+							for (const k of Object.keys(layers)) {
+								if (k in (f.layers as Record<string, unknown>)) {
+									(layers as any)[k] = (f.layers as any)[k];
+								}
+							}
+						}
+						applyRefImageTransform(f.refImage);
+					}
+					applyVehicleEnvelope(design);
+					vehicleName = name;
+					pendingFitView = true;
+				} else {
+					applyVehicleEnvelope(design);
+					if (usedLegacy) pendingFitView = true;
+				}
+			}
+			await loadFrontEndData();
+		})();
+	});
 	$effect(() => {
 		const _ = [nodes, members, constraints, dimensions, refLines, panX, panY, zoom,
 			wheelbaseMm, seatHeightMm, rakeAngleDeg, frontWheelRadiusMm, rearWheelRadiusMm, layers, unitSystem, viewSide,
 			snapSizeUS, snapSizeMetric, showGrid, showSnap, showOrigin, showGround, showRefLines, showScale,
-			showFrontEnd, showRearEnd];
+			showFrontEnd, showRearEnd,
+			refImageVisible, refImageOpacity, refImageOriginX, refImageOriginY, refImageWidthMm, refImageAspect, refImageFileName];
 		saveState();
 	});
 
@@ -806,6 +1087,7 @@
 				nodes, members, constraints, dimensions, refLines,
 				wheelbaseMm, seatHeightMm, rakeAngleDeg,
 				frontWheelRadiusMm, rearWheelRadiusMm, nextId, layers, unitSystem, viewSide,
+				refImage: refImageTransform(),
 			},
 		};
 		const ok = await saveVehicleDesign(design);
@@ -816,26 +1098,27 @@
 
 	async function loadFromFile(name: string) {
 		const design = await loadVehicleDesign(name);
-		if (!design?.frame) { saveStatus = 'No frame data'; setTimeout(() => saveStatus = '', 2000); return; }
-		const f = design.frame as any;
-		nodes = f.nodes ?? [];
-		members = f.members ?? [];
-		constraints = f.constraints ?? [];
-		dimensions = f.dimensions ?? [];
-		refLines = f.refLines ?? [];
-		wheelbaseMm = f.wheelbaseMm ?? 1500;
-		seatHeightMm = f.seatHeightMm ?? 800;
-		rakeAngleDeg = f.rakeAngleDeg ?? 27;
-		frontWheelRadiusMm = f.frontWheelRadiusMm ?? 312;
-		rearWheelRadiusMm = f.rearWheelRadiusMm ?? 312;
-		nextId = f.nextId ?? 1;
-		unitSystem = f.unitSystem ?? 'metric';
-		viewSide = f.viewSide ?? 'right';
-		if (f.layers) {
-			for (const k of Object.keys(layers)) {
-				if (k in f.layers) (layers as any)[k] = f.layers[k];
+		if (!design) { saveStatus = 'Not found'; setTimeout(() => saveStatus = '', 2000); return; }
+		const f = (design.frame ?? {}) as Record<string, unknown>;
+		if (design.frame) {
+			nodes = (f.nodes as LayoutNode[]) ?? [];
+			members = (f.members as FrameMember[]) ?? [];
+			constraints = (f.constraints as Constraint[]) ?? [];
+			dimensions = (f.dimensions as Dimension[]) ?? [];
+			refLines = (f.refLines as RefLine[]) ?? [];
+			nextId = num(f.nextId) ?? 1;
+			unitSystem = (f.unitSystem as UnitSystem) ?? 'metric';
+			viewSide = (f.viewSide as ViewSide) ?? 'right';
+			if (f.layers && typeof f.layers === 'object') {
+				for (const k of Object.keys(layers)) {
+					if (k in (f.layers as Record<string, unknown>)) {
+						(layers as any)[k] = (f.layers as any)[k];
+					}
+				}
 			}
+			applyRefImageTransform(f.refImage);
 		}
+		applyVehicleEnvelope(design);
 		vehicleName = name;
 		setLastFileName(name);
 		saveStatus = 'Loaded';
@@ -944,15 +1227,25 @@
 				canvasW = entry.contentRect.width;
 				canvasH = entry.contentRect.height;
 			}
+			if (pendingFitView && canvasW > 50 && canvasH > 50) {
+				resetView();
+				pendingFitView = false;
+			}
 		});
 		ro.observe(containerEl);
 		return () => ro.disconnect();
 	});
+	$effect(() => {
+		if (pendingFitView && canvasW > 50 && canvasH > 50) {
+			resetView();
+			pendingFitView = false;
+		}
+	});
 </script>
 
-<svelte:window onkeydown={onKeyDown} />
+<svelte:window onkeydown={onKeyDown} onpaste={onPaste} />
 
-<div class="flex flex-col h-[calc(100vh-220px)] min-h-[500px] rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
+<div class="flex flex-col w-full h-[min(96vh,1040px)] min-h-[640px] rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
 	<!-- Top Toolbar -->
 	<div class="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-1.5 text-xs shrink-0 flex-wrap">
 		<select class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs"
@@ -969,7 +1262,7 @@
 		<!-- Snap dropdown -->
 		<div class="relative">
 			<button class="px-2 py-1 rounded hover:bg-gray-800 {showSnap ? 'text-orange-400' : 'text-gray-500'}"
-				onclick={() => { showSnapMenu = !showSnapMenu; showClearMenu = false; showDisplayMenu = false; }}
+				onclick={() => { showSnapMenu = !showSnapMenu; showClearMenu = false; showDisplayMenu = false; showPhotoMenu = false; }}
 				title="Snap Settings (S)">⊹ Snap {fmtSnapLabel()}</button>
 			{#if showSnapMenu}
 				<div class="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[120px]">
@@ -991,10 +1284,10 @@
 		<!-- Display / Visibility dropdown -->
 		<div class="relative">
 			<button class="px-2 py-1 rounded hover:bg-gray-800 text-gray-400"
-				onclick={() => { showDisplayMenu = !showDisplayMenu; showSnapMenu = false; showClearMenu = false; }}
+				onclick={() => { showDisplayMenu = !showDisplayMenu; showSnapMenu = false; showClearMenu = false; showPhotoMenu = false; }}
 				title="Display Options">👁 Display</button>
 			{#if showDisplayMenu}
-				<div class="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[140px]">
+				<div class="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[160px] max-h-[min(70vh,420px)] overflow-y-auto">
 					<button class="w-full text-left px-3 py-1 hover:bg-gray-700 {showGrid ? 'text-orange-400' : 'text-gray-400'}"
 						onclick={() => showGrid = !showGrid}>
 						{showGrid ? '✓' : '  '} Grid
@@ -1024,14 +1317,27 @@
 						onclick={() => showRearEnd = !showRearEnd}>
 						{showRearEnd ? '✓' : '  '} Rear End
 					</button>
+					<div class="border-t border-gray-700 my-1"></div>
+					<div class="px-3 py-1 text-[9px] text-gray-600 uppercase tracking-widest">Layers</div>
+					{#each Object.entries(layers) as [key, visible]}
+						<button class="w-full text-left px-3 py-1 hover:bg-gray-700 {visible ? 'text-orange-400' : 'text-gray-400'}"
+							onclick={() => (layers as any)[key] = !visible}>
+							{visible ? '✓' : '  '} {layerLabels[key]}
+						</button>
+					{/each}
 				</div>
 			{/if}
 		</div>
 
+		<input type="file" accept="image/*" class="hidden" bind:this={refImageInput} onchange={onRefImageChosen} />
+		<button class="px-2 py-1 rounded hover:bg-gray-800 {refImageUrl && refImageVisible ? 'text-orange-400' : 'text-gray-300'}"
+			onclick={() => { showPhotoMenu = false; showSnapMenu = false; showClearMenu = false; showDisplayMenu = false; refImageInput?.click(); }}
+			title="Import a shop photo or screencap as a tracing background">Import screencap</button>
+
 		<!-- Clear dropdown -->
 		<div class="relative">
 			<button class="px-2 py-1 rounded hover:bg-gray-800 text-red-400/70 hover:text-red-400"
-				onclick={() => { showClearMenu = !showClearMenu; showSnapMenu = false; showDisplayMenu = false; }}
+				onclick={() => { showClearMenu = !showClearMenu; showSnapMenu = false; showDisplayMenu = false; showPhotoMenu = false; }}
 				title="Clear Entities">🗑 Clear</button>
 			{#if showClearMenu}
 				<div class="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[140px]">
@@ -1081,6 +1387,36 @@
 		{/if}
 	</div>
 
+	{#if refImageUrl || refImageFileName}
+		<div class="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-1 text-xs shrink-0 flex-wrap">
+			<span class="text-orange-400/90 truncate max-w-[160px]" title={refImageFileName}>{refImageFileName || 'Screencap'}</span>
+			<label class="flex items-center gap-1 text-gray-400">
+				Scale
+				<input type="range" min="25" max="400" step="1" class="w-28 accent-orange-500"
+					value={refImageScalePct} disabled={!refImageUrl}
+					oninput={(e) => setRefImageScalePct(Number((e.target as HTMLInputElement).value))} />
+				<span class="font-mono text-gray-300 w-9">{refImageScalePct}%</span>
+			</label>
+			<label class="flex items-center gap-1 text-gray-400">
+				Fade
+				<input type="range" min="0.05" max="1" step="0.05" class="w-20 accent-orange-500"
+					bind:value={refImageOpacity} disabled={!refImageUrl} />
+			</label>
+			<button class="px-2 py-0.5 rounded hover:bg-gray-800 {refImageAdjust ? 'text-orange-400' : 'text-gray-400'}"
+				onclick={() => refImageAdjust = !refImageAdjust} disabled={!refImageUrl}
+				title="Drag to pan, scroll to scale">
+				{refImageAdjust ? 'Lock photo' : 'Move / scale'}
+			</button>
+			<button class="px-2 py-0.5 rounded hover:bg-gray-800 text-gray-400" onclick={fitRefImageToWheelbase} disabled={!refImageUrl}>Fit</button>
+			<button class="px-2 py-0.5 rounded hover:bg-gray-800 {refImageVisible ? 'text-gray-300' : 'text-gray-600'}"
+				onclick={() => refImageVisible = !refImageVisible} disabled={!refImageUrl}>
+				{refImageVisible ? 'Hide' : 'Show'}
+			</button>
+			<button class="px-2 py-0.5 rounded hover:bg-gray-800 text-red-400/80" onclick={clearRefImage}>Clear</button>
+			<span class="text-[10px] text-gray-600">Drop a file on the canvas or paste a screenshot. Not stored in the vehicle graph.</span>
+		</div>
+	{/if}
+
 	<div class="flex flex-1 overflow-hidden">
 		<!-- Left Tool Palette -->
 		<div class="w-14 shrink-0 border-r border-gray-800 bg-gray-900 flex flex-col items-center py-2 gap-1">
@@ -1103,11 +1439,11 @@
 						{#if showAnchorMenu}
 							<div class="absolute left-12 top-0 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 z-50 min-w-[130px]">
 								<button class="w-full text-left px-3 py-1.5 hover:bg-gray-700 text-xs {anchorSubType === 'front_anchor' && activeTool === 'anchor' ? 'text-orange-400' : 'text-gray-300'}"
-									onclick={() => { anchorSubType = 'front_anchor'; activeTool = 'anchor'; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
+									onclick={() => { anchorSubType = 'front_anchor'; activeTool = 'anchor'; refImageAdjust = false; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
 									⚓ Front End Anchor
 								</button>
 								<button class="w-full text-left px-3 py-1.5 hover:bg-gray-700 text-xs {anchorSubType === 'rear_anchor' && activeTool === 'anchor' ? 'text-cyan-400' : 'text-gray-300'}"
-									onclick={() => { anchorSubType = 'rear_anchor'; activeTool = 'anchor'; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
+									onclick={() => { anchorSubType = 'rear_anchor'; activeTool = 'anchor'; refImageAdjust = false; showAnchorMenu = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; }}>
 									⚓ Rear End Anchor
 								</button>
 							</div>
@@ -1120,7 +1456,7 @@
 						{activeTool === tool.id
 							? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
 							: 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}"
-					onclick={() => { activeTool = tool.id; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; showAnchorMenu = false; }}
+					onclick={() => { activeTool = tool.id; refImageAdjust = false; memberStartId = null; dimStartId = null; reflineStart = null; editPopupVisible = false; showAnchorMenu = false; }}
 					title="{tool.label} ({tool.shortcut})"
 				>
 					<span class="text-base leading-none">{tool.icon}</span>
@@ -1130,31 +1466,21 @@
 			{/each}
 
 			<div class="flex-1"></div>
-
-			<!-- Layer toggles -->
-			<div class="w-full px-1 space-y-0.5">
-				<div class="text-[7px] text-gray-600 uppercase tracking-widest text-center mb-1">Layers</div>
-				{#each Object.entries(layers) as [key, visible]}
-					<button
-						type="button"
-						class="w-full text-[7px] px-0.5 py-0.5 rounded truncate transition-colors {visible ? 'text-gray-300 bg-gray-800' : 'text-gray-600 hover:text-gray-400'}"
-						onclick={() => (layers as any)[key] = !visible}
-						title="{layerLabels[key]}"
-					>
-						{layerLabels[key]}
-					</button>
-				{/each}
-			</div>
 		</div>
 
 		<!-- Central Canvas -->
-		<div class="flex-1 relative overflow-hidden" bind:this={containerEl}>
+		<div class="flex-1 relative overflow-hidden" bind:this={containerEl}
+			role="region"
+			aria-label="Geometry layout canvas"
+			ondragover={onCanvasDragOver}
+			ondragleave={onCanvasDragLeave}
+			ondrop={onCanvasDrop}>
 			<svg
 				bind:this={svgEl}
 				width={canvasW}
 				height={canvasH}
 				class="absolute inset-0"
-				style="cursor: {activeTool === 'select' ? (isPanning ? 'grabbing' : 'default') : activeTool === 'edit' ? 'pointer' : 'crosshair'};"
+				style="cursor: {refImageAdjust ? (draggingRefImage ? 'grabbing' : 'grab') : activeTool === 'select' ? (isPanning ? 'grabbing' : 'default') : activeTool === 'edit' ? 'pointer' : 'crosshair'};"
 				onpointerdown={onPointerDown}
 				onpointermove={onPointerMove}
 				onpointerup={onPointerUp}
@@ -1179,16 +1505,49 @@
 							{@const sx = (effX - panX) * zoom + canvasW / 2}
 							<line x1={sx} y1="0" x2={sx} y2={canvasH}
 								stroke={level.isMajor ? '#1e293b' : '#111827'}
-								stroke-width={level.isMajor ? 1 : 0.5} />
+								stroke-width={level.isMajor ? 1 : 0.5}
+								opacity={refImageUrl && refImageVisible ? 0.35 : 1} />
 						{/each}
 						{#each { length: nRows } as _, i}
 							{@const wy = gBottom + i * level.step}
 							{@const sy = -(wy - panY) * zoom + canvasH / 2}
 							<line x1="0" y1={sy} x2={canvasW} y2={sy}
 								stroke={level.isMajor ? '#1e293b' : '#111827'}
-								stroke-width={level.isMajor ? 1 : 0.5} />
+								stroke-width={level.isMajor ? 1 : 0.5}
+								opacity={refImageUrl && refImageVisible ? 0.35 : 1} />
 						{/each}
 					{/each}
+				{/if}
+
+				<!-- Reference image (world-space tracing aid, above grid, below geometry) -->
+				{#if refImageUrl && refImageVisible}
+					{@const imgH = refImageWidthMm * refImageAspect}
+					{@const [ix1, iy1] = worldToScreen(refImageOriginX, refImageOriginY + imgH)}
+					{@const [ix2, iy2] = worldToScreen(refImageOriginX + refImageWidthMm, refImageOriginY)}
+					<image
+						href={refImageUrl}
+						x={Math.min(ix1, ix2)}
+						y={Math.min(iy1, iy2)}
+						width={Math.abs(ix2 - ix1)}
+						height={Math.abs(iy2 - iy1)}
+						opacity={refImageOpacity}
+						preserveAspectRatio="none"
+						style="pointer-events: none;"
+					/>
+					{#if refImageAdjust}
+						<rect
+							x={Math.min(ix1, ix2)}
+							y={Math.min(iy1, iy2)}
+							width={Math.abs(ix2 - ix1)}
+							height={Math.abs(iy2 - iy1)}
+							fill="none"
+							stroke="#f97316"
+							stroke-width="1"
+							stroke-dasharray="6,4"
+							opacity="0.8"
+							style="pointer-events: none;"
+						/>
+					{/if}
 				{/if}
 
 				<!-- Ground reference line (Y=0) -->
@@ -1593,8 +1952,16 @@
 			</svg>
 
 			<!-- Tool hint overlay -->
+			{#if refImageDragOver}
+				<div class="absolute inset-0 z-20 flex items-center justify-center bg-orange-500/10 border-2 border-dashed border-orange-400 pointer-events-none">
+					<span class="text-sm text-orange-300">Drop screencap to trace</span>
+				</div>
+			{/if}
+
 			<div class="absolute top-2 left-2 text-[10px] text-gray-600 pointer-events-none">
-				{#if activeTool === 'node'}
+				{#if refImageAdjust}
+					Drag to pan the screencap. Scroll to scale. Esc locks it so you can place nodes.
+				{:else if activeTool === 'node'}
 					Click to place node. Snap: {showSnap ? fmtSnapLabel() : 'off'}
 				{:else if activeTool === 'member'}
 					{#if memberStartId}
@@ -1621,7 +1988,11 @@
 				{:else if activeTool === 'edit'}
 					Click entity to edit properties.
 				{:else if activeTool === 'select'}
-					Click to select. Drag nodes to move. Scroll to zoom. Left-drag empty space to pan.
+					{#if !refImageUrl}
+						Import a screencap, drop a file, or paste a screenshot to trace over it.
+					{:else}
+						Click to select. Drag nodes to move. Scroll to zoom. Left-drag empty space to pan.
+					{/if}
 				{/if}
 			</div>
 
@@ -1849,6 +2220,18 @@
 						<p class="text-gray-600 italic">Nothing selected</p>
 					{/if}
 				</div>
+
+				{#if refImageFileName}
+					<div>
+						<div class="flex items-center gap-2 mb-2">
+							<div class="h-px flex-1 bg-gray-800"></div>
+							<span class="text-[9px] text-gray-600 uppercase tracking-widest">Screencap</span>
+							<div class="h-px flex-1 bg-gray-800"></div>
+						</div>
+						<div class="text-gray-400 truncate" title={refImageFileName}>{refImageFileName}</div>
+						<div class="text-gray-600">{refImageUrl ? 'Local cache' : 'Reload file to restore'}</div>
+					</div>
+				{/if}
 
 				<!-- Vehicle parameters -->
 				<div>

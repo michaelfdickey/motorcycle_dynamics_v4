@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 2,
-  "savedAt": "2026-09-01T21:19:57.697Z",
+  "version": 1,
+  "savedAt": "2026-09-01T22:48:45.016Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -42,8 +42,8 @@
     "rakeAngleDeg": 45,
     "forkOffsetMm": 70,
     "forkLengthMm": 595,
-    "forkTravelMm": 125,
-    "compressionPct": 6,
+    "forkTravelMm": 40,
+    "compressionPct": 10,
     "forkTubeSize": "41/54",
     "invertedForks": false,
     "steeringColumnHeightMm": 195,
@@ -61,59 +61,200 @@
     "nodes": [
       {
         "id": "n_1",
-        "x": 1425,
-        "y": 225,
+        "x": 3.175,
+        "y": 403.22499999999997,
         "type": "generic",
         "label": ""
       },
       {
         "id": "n_2",
-        "x": 250,
-        "y": 225,
+        "x": 50.8,
+        "y": 333.375,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_3",
+        "x": 1006.4749999999999,
+        "y": 330.2,
         "type": "generic",
         "label": ""
       },
       {
         "id": "n_4",
-        "x": 1675,
-        "y": 500,
+        "x": 1555.75,
+        "y": 327.025,
         "type": "generic",
         "label": ""
       },
       {
         "id": "n_5",
-        "x": 1300,
-        "y": 825,
+        "x": 2301.875,
+        "y": 317.5,
         "type": "generic",
         "label": ""
       },
       {
         "id": "n_6",
-        "x": 725,
-        "y": 300,
+        "x": 2384.4249999999997,
+        "y": 508,
         "type": "generic",
         "label": ""
+      },
+      {
+        "id": "n_7",
+        "x": 1949.4499999999998,
+        "y": 762,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_8",
+        "x": 1476.375,
+        "y": 412.75,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_9",
+        "x": 965.1999999999999,
+        "y": 911.2249999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_10",
+        "x": 968.375,
+        "y": 1285.875,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_11",
+        "x": 323.84999999999997,
+        "y": 1000.125,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_12",
+        "x": 333.375,
+        "y": 911.2249999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_13",
+        "x": 733.425,
+        "y": 908.05,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_14",
+        "x": 82.55,
+        "y": 527.05,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_32",
+        "x": 1282.6999999999998,
+        "y": 247.64999999999998,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_33",
+        "x": 1555.75,
+        "y": 244.475,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_34",
+        "x": 1279.5249999999999,
+        "y": 330.2,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_35",
+        "x": 708.025,
+        "y": 247.64999999999998,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "a_49",
+        "x": 0,
+        "y": 406.4,
+        "type": "rear_anchor",
+        "label": "Rear End"
+      },
+      {
+        "id": "n_50",
+        "x": 2298.7,
+        "y": 323.84999999999997,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_51",
+        "x": 2403.475,
+        "y": 708.025,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_52",
+        "x": 2524.125,
+        "y": 600.0749999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "n_53",
+        "x": 2311.4,
+        "y": 790.5749999999999,
+        "type": "generic",
+        "label": ""
+      },
+      {
+        "id": "a_58",
+        "x": 2403.475,
+        "y": 701.675,
+        "type": "front_anchor",
+        "label": "Front End"
       }
     ],
     "members": [
       {
-        "id": "m_3",
-        "startId": "n_2",
+        "id": "m_15",
+        "startId": "n_14",
         "endId": "n_1",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
       },
       {
-        "id": "m_7",
+        "id": "m_16",
         "startId": "n_1",
-        "endId": "n_4",
+        "endId": "n_2",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
       },
       {
-        "id": "m_8",
+        "id": "m_17",
+        "startId": "n_2",
+        "endId": "n_3",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_19",
         "startId": "n_4",
         "endId": "n_5",
         "label": "",
@@ -121,9 +262,233 @@
         "thickness": 1.6
       },
       {
-        "id": "m_9",
+        "id": "m_20",
         "startId": "n_5",
         "endId": "n_6",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_21",
+        "startId": "n_6",
+        "endId": "n_7",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_22",
+        "startId": "n_7",
+        "endId": "n_8",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_23",
+        "startId": "n_8",
+        "endId": "n_9",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_24",
+        "startId": "n_9",
+        "endId": "n_10",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_25",
+        "startId": "n_10",
+        "endId": "n_11",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_26",
+        "startId": "n_11",
+        "endId": "n_12",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_27",
+        "startId": "n_12",
+        "endId": "n_13",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_28",
+        "startId": "n_13",
+        "endId": "n_14",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_29",
+        "startId": "n_9",
+        "endId": "n_13",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_30",
+        "startId": "n_3",
+        "endId": "n_9",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_31",
+        "startId": "n_4",
+        "endId": "n_8",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_36",
+        "startId": "n_2",
+        "endId": "n_35",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_37",
+        "startId": "n_35",
+        "endId": "n_32",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_38",
+        "startId": "n_32",
+        "endId": "n_33",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_39",
+        "startId": "n_33",
+        "endId": "n_5",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_40",
+        "startId": "n_4",
+        "endId": "n_34",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_41",
+        "startId": "n_34",
+        "endId": "n_3",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_42",
+        "startId": "n_34",
+        "endId": "n_9",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_43",
+        "startId": "n_8",
+        "endId": "n_34",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_44",
+        "startId": "n_32",
+        "endId": "n_34",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_45",
+        "startId": "n_33",
+        "endId": "n_4",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_46",
+        "startId": "n_32",
+        "endId": "n_4",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_47",
+        "startId": "n_33",
+        "endId": "n_7",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_48",
+        "startId": "n_7",
+        "endId": "n_5",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_54",
+        "startId": "n_53",
+        "endId": "n_51",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_55",
+        "startId": "n_51",
+        "endId": "n_52",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_56",
+        "startId": "n_52",
+        "endId": "n_50",
+        "label": "",
+        "diameter": 25.4,
+        "thickness": 1.6
+      },
+      {
+        "id": "m_57",
+        "startId": "n_53",
+        "endId": "n_7",
         "label": "",
         "diameter": 25.4,
         "thickness": 1.6
@@ -132,12 +497,12 @@
     "constraints": [],
     "dimensions": [],
     "refLines": [],
-    "wheelbaseMm": 1500,
-    "seatHeightMm": 800,
-    "rakeAngleDeg": 27,
-    "frontWheelRadiusMm": 312,
-    "rearWheelRadiusMm": 312,
-    "nextId": 10,
+    "wheelbaseMm": 2794,
+    "seatHeightMm": 406.4,
+    "rakeAngleDeg": 45,
+    "frontWheelRadiusMm": 320,
+    "rearWheelRadiusMm": 406.4,
+    "nextId": 59,
     "layers": {
       "wheels": true,
       "frontEnd": true,
@@ -151,7 +516,16 @@
       "dimensions": true,
       "reflines": true
     },
-    "unitSystem": "metric",
-    "viewSide": "right"
+    "unitSystem": "us",
+    "viewSide": "right",
+    "refImage": {
+      "visible": true,
+      "opacity": 0.3,
+      "originX": -96.34608670464473,
+      "originY": 146.58533797765517,
+      "widthMm": 2855.468,
+      "aspect": 0.4173693086003373,
+      "fileName": "2026-09-01 15_42_02-Modeler\u2122 LightWave 3D\u00ae 2023.0 (Win64).png"
+    }
   }
 }

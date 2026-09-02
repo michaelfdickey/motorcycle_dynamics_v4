@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { RearEndResults, RearSuspensionType, ShockAction } from '$lib/rearEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
+	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
 
 	let {
 		results,
@@ -10,6 +11,7 @@
 		swingarmSectionMm = 40,
 		shockBodyDiaMm = 50,
 		viewSide = 'right',
+		unitSystem = 'metric',
 	}: {
 		results: RearEndResults;
 		tire: TireDimensions;
@@ -18,6 +20,7 @@
 		swingarmSectionMm?: number;
 		shockBodyDiaMm?: number;
 		viewSide?: 'left' | 'right';
+		unitSystem?: UnitSystem;
 	} = $props();
 
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -65,6 +68,8 @@
 	let povMenuOpen = $state(false);
 	let freeX = $state(0);
 	let freeY = $state(0);
+	let freeViewW = $state(0);
+	let freeViewH = $state(0);
 	let panStartFreeX = $state(0);
 	let panStartFreeY = $state(0);
 	const povOptions: { value: PovOption; label: string }[] = [
@@ -91,18 +96,40 @@
 		povFocus === 'free' ? { x: freeX, y: freeY } : { x: lockedCenter.x - panX, y: lockedCenter.y + panY },
 	);
 
+	const viewSize = $derived.by(() => {
+		if (povFocus === 'free' && freeViewW > 0 && freeViewH > 0) {
+			return { w: freeViewW, h: freeViewH };
+		}
+		return { w: bounds.width / zoom, h: bounds.height / zoom };
+	});
+
 	const viewBox = $derived.by(() => {
-		const w = bounds.width / zoom;
-		const h = bounds.height / zoom;
+		const { w, h } = viewSize;
 		const cx = lookAt.x;
 		const cy = -lookAt.y;
 		return `${cx - w / 2} ${cy - h / 2} ${w} ${h}`;
+	});
+
+	const grid = $derived.by(() => {
+		const step = gridStepMm(unitSystem);
+		const { w, h } = viewSize;
+		const left = lookAt.x - w / 2;
+		const right = lookAt.x + w / 2;
+		const bottom = lookAt.y - h / 2;
+		const top = lookAt.y + h / 2;
+		return {
+			step,
+			xs: gridRange(left, right, step),
+			ys: gridRange(bottom, top, step),
+		};
 	});
 
 	function selectPov(opt: PovOption) {
 		if (opt === 'free') {
 			freeX = lookAt.x;
 			freeY = lookAt.y;
+			freeViewW = bounds.width / Math.max(0.1, zoom);
+			freeViewH = bounds.height / Math.max(0.1, zoom);
 			panX = 0;
 			panY = 0;
 		}
@@ -124,8 +151,8 @@
 	function onPointerMove(e: PointerEvent) {
 		if (!isPanning || !svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
-		const scaleX = bounds.width / (rect.width * zoom);
-		const scaleY = bounds.height / (rect.height * zoom);
+		const scaleX = viewSize.w / rect.width;
+		const scaleY = viewSize.h / rect.height;
 		const dx = (e.clientX - panStartX) * scaleX;
 		const dy = (e.clientY - panStartY) * scaleY;
 		if (povFocus === 'free') {
@@ -141,7 +168,15 @@
 		if (!e.shiftKey) return;
 		e.preventDefault();
 		const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
-		zoom = Math.max(0.1, Math.min(20, zoom * (delta < 0 ? 1.1 : 1 / 1.1)));
+		const factor = delta < 0 ? 1.1 : 1 / 1.1;
+		if (povFocus === 'free') {
+			const w = freeViewW > 0 ? freeViewW : bounds.width / zoom;
+			const h = freeViewH > 0 ? freeViewH : bounds.height / zoom;
+			freeViewW = Math.max(40, Math.min(20000, w / factor));
+			freeViewH = Math.max(40, Math.min(20000, h / factor));
+		} else {
+			zoom = Math.max(0.1, Math.min(20, zoom * factor));
+		}
 	}
 
 	const sw = $derived(bounds.width / 320);
@@ -165,6 +200,9 @@
 	}
 
 	const armPoly = $derived(capsule(results.axleCenter, results.pivot, swingarmSectionMm));
+	const stayThick = $derived(swingarmSectionMm / 2);
+	const stayApexAxle = $derived(results.apex ? capsule(results.axleCenter, results.apex, stayThick) : null);
+	const stayApexPivot = $derived(results.apex ? capsule(results.pivot, results.apex, stayThick) : null);
 	const shockDir = $derived.by(() => {
 		const dx = results.shockUpper.x - results.shockLower.x;
 		const dy = results.shockUpper.y - results.shockLower.y;
@@ -238,6 +276,16 @@
 		onwheel={onWheel}
 	>
 		<g transform={mirrorTransform}>
+			<!-- Soft unit grid -->
+			{#each grid.xs as gx}
+				<line x1={gx} y1={sy(lookAt.y - viewSize.h / 2)} x2={gx} y2={sy(lookAt.y + viewSize.h / 2)}
+					stroke="#64748b" stroke-width={sw * 0.25} opacity="0.22" />
+			{/each}
+			{#each grid.ys as gy}
+				<line x1={lookAt.x - viewSize.w / 2} y1={sy(gy)} x2={lookAt.x + viewSize.w / 2} y2={sy(gy)}
+					stroke="#64748b" stroke-width={sw * 0.25} opacity="0.22" />
+			{/each}
+
 			<!-- Ground -->
 			<line
 				x1={bounds.minX}
@@ -317,18 +365,10 @@
 				<polygon points={polyPoints(armPoly)} fill="#374151" stroke="#9ca3af" stroke-width={swThin} />
 			{/if}
 
-			<!-- Triangulated stays -->
-			{#if results.apex}
-				<line
-					x1={results.axleCenter.x} y1={sy(results.axleCenter.y)}
-					x2={results.apex.x} y2={sy(results.apex.y)}
-					stroke="#9ca3af" stroke-width={sw * 1.4} stroke-linecap="round"
-				/>
-				<line
-					x1={results.pivot.x} y1={sy(results.pivot.y)}
-					x2={results.apex.x} y2={sy(results.apex.y)}
-					stroke="#9ca3af" stroke-width={sw * 1.4} stroke-linecap="round"
-				/>
+			<!-- Triangulated stays: half the swingarm section -->
+			{#if results.apex && stayApexAxle && stayApexPivot}
+				<polygon points={polyPoints(stayApexAxle)} fill="#4b5563" stroke="#9ca3af" stroke-width={swThin * 0.6} />
+				<polygon points={polyPoints(stayApexPivot)} fill="#4b5563" stroke="#9ca3af" stroke-width={swThin * 0.6} />
 				<circle cx={results.apex.x} cy={sy(results.apex.y)} r={sw * 2.2} fill="#f97316" />
 			{/if}
 

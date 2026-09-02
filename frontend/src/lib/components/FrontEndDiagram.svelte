@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
+	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right' }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right' } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right', unitSystem = 'metric' }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right'; unitSystem?: UnitSystem } = $props();
 
 	// Mirror transform for left-side view
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -41,11 +42,18 @@
 	let svgEl: SVGSVGElement | undefined = $state();
 
 	// --- POV Focus ---
-	type PovOption = 'wheel' | 'steering' | 'forkpivot' | 'contact';
+	type PovOption = 'free' | 'wheel' | 'steering' | 'forkpivot' | 'contact';
 	let povFocus = $state<PovOption>('steering');
 	let povMenuOpen = $state(false);
+	let freeX = $state(0);
+	let freeY = $state(0);
+	let freeViewW = $state(0);
+	let freeViewH = $state(0);
+	let panStartFreeX = $state(0);
+	let panStartFreeY = $state(0);
 
 	const povOptions: { value: PovOption; label: string }[] = [
+		{ value: 'free', label: 'Floating (drag)' },
 		{ value: 'wheel', label: 'Wheel Center' },
 		{ value: 'steering', label: 'Steering Column Center' },
 		{ value: 'forkpivot', label: 'Fork End Pivot' },
@@ -63,14 +71,43 @@
 		}
 	});
 
-	const viewBox = $derived.by(() => {
-		const w = bounds.width / zoom;
-		const h = bounds.height / zoom;
-		// Center on the POV focus point, then apply pan offset
-		const cx = povCenter.x - panX;
-		const cy = -povCenter.y - panY;
-		return `${cx - w / 2} ${cy - h / 2} ${w} ${h}`;
+	const lookAt = $derived(
+		povFocus === 'free' ? { x: freeX, y: freeY } : { x: povCenter.x - panX, y: povCenter.y + panY },
+	);
+
+	const viewSize = $derived.by(() => {
+		if (povFocus === 'free' && freeViewW > 0 && freeViewH > 0) {
+			return { w: freeViewW, h: freeViewH };
+		}
+		return { w: bounds.width / zoom, h: bounds.height / zoom };
 	});
+
+	const viewBox = $derived.by(() => {
+		const { w, h } = viewSize;
+		return `${lookAt.x - w / 2} ${-lookAt.y - h / 2} ${w} ${h}`;
+	});
+
+	const grid = $derived.by(() => {
+		const step = gridStepMm(unitSystem);
+		const { w, h } = viewSize;
+		return {
+			xs: gridRange(lookAt.x - w / 2, lookAt.x + w / 2, step),
+			ys: gridRange(lookAt.y - h / 2, lookAt.y + h / 2, step),
+		};
+	});
+
+	function selectPov(opt: PovOption) {
+		if (opt === 'free') {
+			freeX = lookAt.x;
+			freeY = lookAt.y;
+			freeViewW = bounds.width / Math.max(0.1, zoom);
+			freeViewH = bounds.height / Math.max(0.1, zoom);
+			panX = 0;
+			panY = 0;
+		}
+		povFocus = opt;
+		povMenuOpen = false;
+	}
 
 	function onPointerDown(e: PointerEvent) {
 		if (e.button !== 0) return;
@@ -79,16 +116,25 @@
 		panStartY = e.clientY;
 		panStartPanX = panX;
 		panStartPanY = panY;
+		panStartFreeX = lookAt.x;
+		panStartFreeY = lookAt.y;
 		(e.currentTarget as Element).setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e: PointerEvent) {
 		if (!isPanning || !svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
-		const scaleX = bounds.width / (rect.width * zoom);
-		const scaleY = bounds.height / (rect.height * zoom);
-		panX = panStartPanX + (e.clientX - panStartX) * scaleX;
-		panY = panStartPanY + (e.clientY - panStartY) * scaleY;
+		const scaleX = viewSize.w / rect.width;
+		const scaleY = viewSize.h / rect.height;
+		const dx = (e.clientX - panStartX) * scaleX;
+		const dy = (e.clientY - panStartY) * scaleY;
+		if (povFocus === 'free') {
+			freeX = panStartFreeX - dx;
+			freeY = panStartFreeY + dy;
+		} else {
+			panX = panStartPanX + dx;
+			panY = panStartPanY + dy;
+		}
 	}
 
 	function onPointerUp() {
@@ -98,10 +144,16 @@
 	function onWheel(e: WheelEvent) {
 		if (!e.shiftKey) return;
 		e.preventDefault();
-		// macOS swaps deltaY to deltaX when shift is held
 		const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
 		const factor = delta < 0 ? 1.1 : 1 / 1.1;
-		zoom = Math.max(0.1, Math.min(20, zoom * factor));
+		if (povFocus === 'free') {
+			const w = freeViewW > 0 ? freeViewW : bounds.width / zoom;
+			const h = freeViewH > 0 ? freeViewH : bounds.height / zoom;
+			freeViewW = Math.max(40, Math.min(20000, w / factor));
+			freeViewH = Math.max(40, Math.min(20000, h / factor));
+		} else {
+			zoom = Math.max(0.1, Math.min(20, zoom * factor));
+		}
 	}
 
 	// Scale-independent sizes
@@ -801,7 +853,7 @@
 			class="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors"
 			class:text-orange-400={povFocus === opt.value}
 			class:text-gray-300={povFocus !== opt.value}
-			onclick={() => { povFocus = opt.value; povMenuOpen = false; }}
+			onclick={() => selectPov(opt.value)}
 		>
 			{opt.label}
 		</button>
@@ -824,6 +876,14 @@
 	onwheel={onWheel}
 >
 <g transform={mirrorTransform}>
+	{#each grid.xs as gx}
+		<line x1={gx} y1={sy(lookAt.y - viewSize.h / 2)} x2={gx} y2={sy(lookAt.y + viewSize.h / 2)}
+			stroke="#64748b" stroke-width={sw * 0.25} opacity="0.22" />
+	{/each}
+	{#each grid.ys as gy}
+		<line x1={lookAt.x - viewSize.w / 2} y1={sy(gy)} x2={lookAt.x + viewSize.w / 2} y2={sy(gy)}
+			stroke="#64748b" stroke-width={sw * 0.25} opacity="0.22" />
+	{/each}
 	<!-- Steering axis (dashed yellow) -->
 	<line
 		x1={saLineBottom.x}

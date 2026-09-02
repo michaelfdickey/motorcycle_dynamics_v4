@@ -64,6 +64,7 @@
 	}
 
 	let viewSide = $state<'right' | 'left'>('right');
+	let unitSystem = $state<'metric' | 'us'>('metric');
 	let suspensionType = $state<RearSuspensionType>('twin_shock');
 	let shockAction = $state<ShockAction>('compression');
 	let tireDesignation = $state('150/80B16');
@@ -369,10 +370,10 @@
 				</label>
 				{#if tireParams && tireDims}
 					<div class="grid grid-cols-2 gap-2 text-xs text-gray-400">
-						<div>Width: <span class="text-gray-200">{tireDims.widthMm} mm</span></div>
-						<div>Section: <span class="text-gray-200">{tireDims.sectionHeightMm.toFixed(1)} mm</span></div>
-						<div>Rim dia: <span class="text-gray-200">{tireDims.rimDiameterMm.toFixed(1)} mm</span></div>
-						<div>Outer dia: <span class="text-gray-200">{tireDims.outerDiameterMm.toFixed(1)} mm</span></div>
+						<div>Width: <span class="text-gray-200">{tireDims.widthMm} mm ({mmToIn(tireDims.widthMm).toFixed(2)}")</span></div>
+						<div>Section: <span class="text-gray-200">{tireDims.sectionHeightMm.toFixed(1)} mm ({mmToIn(tireDims.sectionHeightMm).toFixed(2)}")</span></div>
+						<div>Rim dia: <span class="text-gray-200">{tireDims.rimDiameterMm.toFixed(1)} mm ({mmToIn(tireDims.rimDiameterMm).toFixed(2)}")</span></div>
+						<div>Outer dia: <span class="text-gray-200">{tireDims.outerDiameterMm.toFixed(1)} mm ({mmToIn(tireDims.outerDiameterMm).toFixed(2)}")</span></div>
 					</div>
 				{:else}
 					<p class="text-xs text-red-400">Invalid tire designation. Use format like 150/80B16</p>
@@ -454,7 +455,9 @@
 					<option value="right">Right side view</option>
 					<option value="left">Left side view</option>
 				</select>
-				<span class="text-[10px] text-gray-600">Shift+wheel zoom. Drag to pan. Floating view stays where you leave it.</span>
+				<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'metric' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'metric'}>mm</button>
+				<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'us' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'us'}>in</button>
+				<span class="text-[10px] text-gray-600">Grid {unitSystem === 'us' ? '6"' : '10 cm'}. Shift+wheel zoom. Floating view does not auto-zoom.</span>
 			</div>
 			<div class="flex-1 min-h-0 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
 				{#if results && tireDims}
@@ -465,6 +468,7 @@
 						{shockAction}
 						{swingarmSectionMm}
 						{viewSide}
+						{unitSystem}
 					/>
 				{:else}
 					<div class="flex h-full items-center justify-center text-sm text-gray-500">Enter a valid tire designation to draw.</div>

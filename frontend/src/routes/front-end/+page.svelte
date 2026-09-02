@@ -341,6 +341,7 @@
 
 
 	let viewSide = $state<'right' | 'left'>('right');
+	let unitSystem = $state<'metric' | 'us'>('metric');
 
 	let suspensionType = $state<SuspensionType>('telescopic');
 
@@ -1090,13 +1091,13 @@
 
 					<div class="grid grid-cols-2 gap-2 text-xs text-gray-400">
 
-						<div>Width: <span class="text-gray-200">{tireDims.widthMm} mm</span></div>
+						<div>Width: <span class="text-gray-200">{tireDims.widthMm} mm ({mmToIn(tireDims.widthMm).toFixed(2)}")</span></div>
 
-						<div>Section height: <span class="text-gray-200">{tireDims.sectionHeightMm.toFixed(1)} mm</span></div>
+						<div>Section height: <span class="text-gray-200">{tireDims.sectionHeightMm.toFixed(1)} mm ({mmToIn(tireDims.sectionHeightMm).toFixed(2)}")</span></div>
 
-						<div>Rim dia: <span class="text-gray-200">{tireDims.rimDiameterMm.toFixed(1)} mm</span></div>
+						<div>Rim dia: <span class="text-gray-200">{tireDims.rimDiameterMm.toFixed(1)} mm ({mmToIn(tireDims.rimDiameterMm).toFixed(2)}")</span></div>
 
-						<div>Outer dia: <span class="text-gray-200">{tireDims.outerDiameterMm.toFixed(1)} mm</span></div>
+						<div>Outer dia: <span class="text-gray-200">{tireDims.outerDiameterMm.toFixed(1)} mm ({mmToIn(tireDims.outerDiameterMm).toFixed(2)}")</span></div>
 
 					</div>
 
@@ -1949,6 +1950,11 @@
 						<option value="left">Left Side View</option>
 
 					</select>
+					<div class="flex items-center gap-1">
+						<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'metric' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'metric'}>mm</button>
+						<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'us' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'us'}>in</button>
+						<span class="text-[10px] text-gray-600 ml-1">Grid {unitSystem === 'us' ? '6"' : '10 cm'}</span>
+					</div>
 
 				</div>
 
@@ -1956,7 +1962,7 @@
 
 					<div class="aspect-[4/3] w-full">
 
-						<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} {suspUpperMountOffsetMm} {linkLengthMm} {linkOffsetMm} {viewSide} />
+						<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} {suspUpperMountOffsetMm} {linkLengthMm} {linkOffsetMm} {viewSide} {unitSystem} />
 
 					</div>
 

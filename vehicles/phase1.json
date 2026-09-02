@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 6,
-  "savedAt": "2026-09-02T00:30:18.972Z",
+  "version": 7,
+  "savedAt": "2026-09-02T00:45:44.858Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -536,21 +536,21 @@
     "pivotHeightMm": 269,
     "shockEyeToEyeMm": 304,
     "shockStrokeMm": 138,
-    "compressionPct": 23,
+    "compressionPct": 20,
     "shockLowerFromAxleMm": 189,
-    "shockUpperForwardMm": -2,
+    "shockUpperForwardMm": -10,
     "shockUpperHeightMm": 623,
     "triangleApexForwardMm": 221,
-    "triangleApexHeightMm": 142,
+    "triangleApexHeightMm": 144,
     "rockerPivotForwardMm": 30,
     "rockerPivotHeightMm": 480,
     "rockerLengthMm": 90,
     "dogboneOnArmMm": 180,
     "dogboneLengthMm": 160,
-    "countershaftForwardMm": 1,
+    "countershaftForwardMm": 0,
     "countershaftHeightOffPivotMm": -1,
     "rearSprocketRadiusMm": 110,
     "frontSprocketRadiusMm": 38,
-    "swingarmSectionMm": 60
+    "swingarmSectionMm": 54
   }
 }

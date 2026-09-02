@@ -20,6 +20,8 @@
 		getLastFileName,
 		type VehicleDesign,
 	} from '$lib/vehicleStore';
+	import { assembleBike, applyAssemblyToVehicle } from '$lib/bikeAssembly';
+	import BrakesScene from '$lib/components/BrakesScene.svelte';
 	import { browser } from '$app/environment';
 
 	// ── Unit conversion helpers ──
@@ -52,7 +54,9 @@
 	async function handleSave() {
 		if (!vehicleName.trim()) return;
 		saveStatus = 'saving';
+		const existing = await loadVehicleDesign(vehicleName.trim());
 		const design: VehicleDesign = {
+			...(existing || {}),
 			name: vehicleName.trim(),
 			version: 1,
 			savedAt: new Date().toISOString(),
@@ -64,7 +68,10 @@
 		};
 		const ok = await saveVehicleDesign(design);
 		saveStatus = ok ? 'saved' : 'error';
-		if (ok) await refreshVehicleList();
+		if (ok) {
+			loadedDesign = design;
+			await refreshVehicleList();
+		}
 		setTimeout(() => { saveStatus = ''; }, 1500);
 	}
 
@@ -77,11 +84,17 @@
 		const design = await loadVehicleDesign(name);
 		if (!design) return;
 		vehicleName = design.name;
+		loadedDesign = design;
 		if (design.brakes) {
 			frontBrake = migrateBrakeParams({ ...defaultFrontBrake(), ...design.brakes.frontBrake });
 			rearBrake = migrateBrakeParams({ ...defaultRearBrake(), ...design.brakes.rearBrake });
 			vehicle = { ...defaultVehicleParams(), ...design.brakes.vehicle } as VehicleParams;
+		} else {
+			frontBrake = defaultFrontBrake();
+			rearBrake = defaultRearBrake();
 		}
+		const assembled = assembleBike(design, vehicle);
+		vehicle = applyAssemblyToVehicle(vehicle, assembled);
 		loadModalVisible = false;
 	}
 
@@ -96,6 +109,8 @@
 	let frontBrake = $state<BrakeParams>(defaultFrontBrake());
 	let rearBrake = $state<BrakeParams>(defaultRearBrake());
 	let vehicle = $state<VehicleParams>(defaultVehicleParams());
+	let loadedDesign = $state<VehicleDesign | null>(null);
+	const bike = $derived(assembleBike(loadedDesign, vehicle));
 
 	// ── Control Inputs ──
 	let frontLeverForceN = $state(150);
@@ -143,8 +158,21 @@
 		} catch { /* ignore parse errors */ }
 	}
 
-	// Restore on mount
+	// Restore on mount, then pull frame/front/rear from the last vehicle file
 	restoreBrakesSession();
+	if (browser) {
+		void (async () => {
+			const design = await loadVehicleDesign(vehicleName);
+			if (!design) return;
+			loadedDesign = design;
+			if (!JSON.parse(localStorage.getItem(BRAKES_STORAGE_KEY) || 'null')?.frontBrake && design.brakes) {
+				frontBrake = migrateBrakeParams({ ...defaultFrontBrake(), ...design.brakes.frontBrake });
+				rearBrake = migrateBrakeParams({ ...defaultRearBrake(), ...design.brakes.rearBrake });
+				vehicle = { ...defaultVehicleParams(), ...design.brakes.vehicle } as VehicleParams;
+			}
+			vehicle = applyAssemblyToVehicle(vehicle, assembleBike(design, vehicle));
+		})();
+	}
 
 	// Auto-save on changes
 	$effect(() => {
@@ -591,169 +619,44 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						<option value="right">Right Side View</option>
 						<option value="left">Left Side View</option>
 					</select>
+					{#if bike.hasFrame || bike.hasFront || bike.hasRear}
+						<span class="text-[10px] text-gray-500">
+							{bike.hasFrame ? 'Frame' : ''}{bike.hasFront ? ' + Front' : ''}{bike.hasRear ? ' + Rear' : ''} wireframe
+							· rotors from {loadedDesign?.brakes ? 'saved model' : 'defaults'}
+							· static sag (no brake-travel yet)
+						</span>
+					{/if}
 					<button onclick={requestFeedback} disabled={feedbackLoading}
 						class="px-3 py-1 text-xs font-medium rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50">
 						{feedbackLoading ? '⏳ Analyzing...' : '💡 Feedback'}
 					</button>
 				</div>
 				<div class="flex-1 min-h-[50vh] lg:min-h-0 overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
-				<svg viewBox="0 0 {svgWidth} {svgHeight}" class="w-full h-full" preserveAspectRatio="xMidYMid meet">
-					<defs>
-						<marker id="arrowGreen" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-							<path d="M0,0 L6,3 L0,6 Z" fill="#22c55e" />
-						</marker>
-						<marker id="dimTick" markerWidth="1" markerHeight="6" refX="0.5" refY="3" orient="auto">
-							<line x1="0.5" y1="0" x2="0.5" y2="6" stroke="#555" stroke-width="1" />
-						</marker>
-					</defs>
-
-					<!-- ═══ FAR BACKGROUND — mountains/hills (very slow parallax) ═══ -->
-					{#each Array.from({length: Math.ceil(svgWidth / 440) + 3}, (_, i) => i) as i}
-						{@const mx = i * 440 - ((farBgOffset % 440) + 440) % 440 - 220}
-						<polygon points="{mx},{groundY} {mx + 220},{groundY - 260} {mx + 440},{groundY}"
-							fill="#1a1a2e" stroke="none" />
-						<polygon points="{mx + 160},{groundY} {mx + 300},{groundY - 170} {mx + 480},{groundY}"
-							fill="#16162a" stroke="none" />
-					{/each}
-					<line x1="0" y1={groundY} x2={svgWidth} y2={groundY} stroke="#222" stroke-width="0.5" />
-
-					<!-- ═══ NEAR BACKGROUND — trees (medium parallax) ═══ -->
-					{#each Array.from({length: Math.ceil(svgWidth / 180) + 3}, (_, i) => i) as i}
-						{@const tx = i * 180 - ((nearBgOffset % 180) + 180) % 180 - 90}
-						{@const worldIdx = i + Math.floor(nearBgOffset / 180)}
-						{@const treeH = 165 + (((worldIdx % 3) + 3) % 3) * 40}
-						<line x1={tx} y1={groundY} x2={tx} y2={groundY - treeH + 45}
-							stroke="#2a1f14" stroke-width="8" />
-						<polygon points="{tx},{groundY - treeH} {tx - 42},{groundY - treeH + 90} {tx + 42},{groundY - treeH + 90}"
-							fill="#1a3a1a" stroke="none" />
-						<polygon points="{tx},{groundY - treeH + 36} {tx - 54},{groundY - treeH + 126} {tx + 54},{groundY - treeH + 126}"
-							fill="#153015" stroke="none" />
-					{/each}
-
-					<!-- Road surface -->
-					<line x1="0" y1={groundY} x2={svgWidth} y2={groundY} stroke="#666" stroke-width="1.5" />
-					<!-- Road motion markers (scroll left during braking) -->
-					{#each roadMarkers as mx}
-						<line x1={mx} y1={groundY + 2} x2={mx} y2={groundY + 12}
-							stroke="#444" stroke-width="2" />
-					{/each}
-
-					<!-- WHEELS — stay on ground, not affected by pitch -->
-					<!-- FRONT WHEEL -->
-					<circle cx={frontWheelX} cy={groundY - frontWheelR} r={frontWheelR}
-						fill="none" stroke="#aaa" stroke-width="2.5" />
-					<circle cx={frontWheelX} cy={groundY - frontWheelR} r={frontWheelR - 5}
-						fill="none" stroke="#555" stroke-width="5" opacity="0.3" />
-					{#each spokeLines(frontWheelX, groundY - frontWheelR, frontWheelR, frontWheelAngleDeg) as d}
-						<path {d} stroke="#777" stroke-width="1.5" fill="none" />
-					{/each}
-					<circle cx={frontWheelX} cy={groundY - frontWheelR} r="4" fill="#f97316" />
-					<!-- Front disc rotor -->
-					<circle cx={frontWheelX} cy={groundY - frontWheelR} r={frontDiscR}
-						fill="none" stroke="#ef4444" stroke-width="2.5" opacity="0.8" />
-					<rect x={viewSide === 'right' ? frontWheelX - frontDiscR - 6 : frontWheelX + frontDiscR - 6} y={groundY - frontWheelR - 8}
-						width="12" height="16" rx="2" fill="#ef4444" opacity="0.6" />
-
-					<!-- REAR WHEEL -->
-					<circle cx={rearWheelX} cy={groundY - rearWheelR} r={rearWheelR}
-						fill="none" stroke="#aaa" stroke-width="2.5" />
-					<circle cx={rearWheelX} cy={groundY - rearWheelR} r={rearWheelR - 5}
-						fill="none" stroke="#555" stroke-width="5" opacity="0.3" />
-					{#each spokeLines(rearWheelX, groundY - rearWheelR, rearWheelR, rearWheelAngleDeg) as d}
-						<path {d} stroke="#777" stroke-width="1.5" fill="none" />
-					{/each}
-					<circle cx={rearWheelX} cy={groundY - rearWheelR} r="4" fill="#f97316" />
-					<!-- Rear disc rotor -->
-					<circle cx={rearWheelX} cy={groundY - rearWheelR} r={rearDiscR}
-						fill="none" stroke="#ef4444" stroke-width="2" opacity="0.8" />
-					<rect x={viewSide === 'right' ? rearWheelX - rearDiscR - 5 : rearWheelX + rearDiscR - 5} y={groundY - rearWheelR - 6}
-						width="10" height="12" rx="2" fill="#ef4444" opacity="0.5" />
-
-					<!-- CHASSIS — pitches around midpoint between axles at axle height -->
-					<g transform="rotate({viewSide === 'right' ? simPitchDeg : -simPitchDeg}, {(frontWheelX + rearWheelX) / 2}, {groundY - (frontWheelR + rearWheelR) / 2})">
-						<!-- FRAME (triangle) -->
-						<polygon
-							points="{frontWheelX},{groundY - frontWheelR - 20} {rearWheelX},{groundY - rearWheelR - 10} {cogX},{cogY - 20}"
-							fill="none" stroke="#6b7280" stroke-width="2" />
-
-						<!-- Swingarm -->
-						<line x1={cogX + 30} y1={groundY - mmToPx(vehicle.cogHeightMm * 0.5)}
-							x2={rearWheelX} y2={groundY - rearWheelR}
-							stroke="#6b7280" stroke-width="3" />
-
-						<!-- Fork -->
-						<line x1={frontWheelX} y1={groundY - frontWheelR}
-							x2={frontWheelX + 15} y2={groundY - frontWheelR - 80}
-							stroke="#6b7280" stroke-width="3" />
-						<line x1={frontWheelX + 15} y1={groundY - frontWheelR - 80}
-							x2={cogX - 20} y2={cogY - 10}
-							stroke="#6b7280" stroke-width="2" />
-
-						<!-- CoG marker -->
-						<circle cx={cogX} cy={cogY} r="6" fill="#f97316" opacity="0.8" />
-						<text x={cogX + 10} y={cogY - 5} fill="#f97316" font-size="10">CoG</text>
-
-						<!-- Weight transfer arrow -->
-						{#if results && results.weightTransferN > 50}
-							<line x1={cogX} y1={cogY + 10} x2={frontWheelX + 20} y2={groundY - frontWheelR - 30}
-								stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrowGreen)" opacity="0.7" />
-						{/if}
-					</g>
-
-					<!-- Wheelbase dimension (not pitched) -->
-					<line x1={frontWheelX} y1={groundY + 20} x2={rearWheelX} y2={groundY + 20}
-						stroke="#555" stroke-width="0.5" marker-start="url(#dimTick)" marker-end="url(#dimTick)" />
-					<text x={(frontWheelX + rearWheelX) / 2} y={groundY + 35}
-						fill="#888" font-size="9" text-anchor="middle">
-						WB: {vehicle.wheelbaseMm}mm ({mmToIn(vehicle.wheelbaseMm).toFixed(1)}")
-					</text>
-
-					<!-- Disc labels (not pitched) -->
-					<text x={frontWheelX} y={groundY - frontWheelR - frontDiscR - 12}
-						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{Math.round(frontBrake.discDiameterMm)} / {totalPotCount(frontBrake.pistons)}-pot
-					</text>
-					<text x={rearWheelX} y={groundY - rearWheelR - rearDiscR - 12}
-						fill="#ef4444" font-size="9" text-anchor="middle">
-						Ø{Math.round(rearBrake.discDiameterMm)} / {totalPotCount(rearBrake.pistons)}-pot
-					</text>
-
-					<!-- Thermal load per rotor (above wheels) -->
-					{#if results && (results.frontBrakeForceN + results.rearBrakeForceN) > 0}
-						<title>Peak thermal energy absorbed per rotor during a full stop from {initialSpeedKph} km/h</title>
-						<text x={frontWheelX} y={groundY - frontWheelR * 2 - 22}
-							fill="#fbbf24" font-size="9" text-anchor="middle" class="cursor-help">
-							{frontBrake.dualSided ? `L: ${frontRotorKJ.toFixed(0)} kJ  R: ${frontRotorKJ.toFixed(0)} kJ` : `Rotor: ${frontRotorKJ.toFixed(0)} kJ`}
-						</text>
-						<text x={rearWheelX} y={groundY - rearWheelR * 2 - 22}
-							fill="#fbbf24" font-size="9" text-anchor="middle" class="cursor-help">
-							{rearBrake.dualSided ? `L: ${rearRotorKJ.toFixed(0)} kJ  R: ${rearRotorKJ.toFixed(0)} kJ` : `Rotor: ${rearRotorKJ.toFixed(0)} kJ`}
-						</text>
-					{/if}
-
-					<!-- HUD overlay -->
-					{#if simRunning || simTimeS > 0}
-						<rect x="8" y="8" width="250" height={simFrontSlip || simRearSlip ? 105 : 85} rx="4" fill="#000" opacity="0.6" />
-						<text x="15" y="26" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Speed: {(simSpeedMs * 3.6).toFixed(1)} km/h ({(simSpeedMs * 2.237).toFixed(1)} mph)
-						</text>
-						<text x="15" y="43" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Peak Decel: {peakDecelG.toFixed(2)} G
-						</text>
-						<text x="15" y="60" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Stop Dist: {brakingDistanceM.toFixed(1)} m ({(brakingDistanceM * 3.281).toFixed(1)} ft)
-						</text>
-						<text x="15" y="77" fill="#e5e7eb" font-size="12" font-family="monospace">
-							Brake Time: {brakingTimeS.toFixed(2)} s
-						</text>
-						{#if simFrontSlip}
-							<text x="15" y="96" fill="#ef4444" font-size="11" font-weight="bold">⚠ FRONT LOCKUP</text>
-						{/if}
-						{#if simRearSlip}
-							<text x="15" y={simFrontSlip ? 110 : 96} fill="#ef4444" font-size="11" font-weight="bold">⚠ REAR LOCKUP</text>
-						{/if}
-					{/if}
-				</svg>
+				<BrakesScene
+					{bike}
+					{vehicle}
+					{frontBrake}
+					{rearBrake}
+					{viewSide}
+					pitchDeg={simPitchDeg}
+					{frontWheelAngleDeg}
+					{rearWheelAngleDeg}
+					{farBgOffset}
+					{nearBgOffset}
+					{roadOffset}
+					{results}
+					{simRunning}
+					{simTimeS}
+					{simSpeedMs}
+					{peakDecelG}
+					{brakingDistanceM}
+					{brakingTimeS}
+					frontSlip={simFrontSlip}
+					rearSlip={simRearSlip}
+					{frontRotorKJ}
+					{rearRotorKJ}
+					{initialSpeedKph}
+				/>
 				</div>
 			</section>
 

@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 7,
-  "savedAt": "2026-09-02T00:45:44.858Z",
+  "version": 9,
+  "savedAt": "2026-09-02T01:28:04.576Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -187,8 +187,8 @@
       },
       {
         "id": "a_49",
-        "x": 704.8499999999999,
-        "y": 333.375,
+        "x": 390.525,
+        "y": 352.42499999999995,
         "type": "rear_anchor",
         "label": "Rear End"
       },
@@ -530,27 +530,27 @@
   },
   "rearEnd": {
     "suspensionType": "cantilever",
-    "tireDesignation": "150/80B16",
+    "tireDesignation": "150/80B22",
     "shockAction": "compression",
-    "swingarmLengthMm": 457,
-    "pivotHeightMm": 269,
-    "shockEyeToEyeMm": 304,
-    "shockStrokeMm": 138,
-    "compressionPct": 20,
-    "shockLowerFromAxleMm": 189,
-    "shockUpperForwardMm": -10,
-    "shockUpperHeightMm": 623,
-    "triangleApexForwardMm": 221,
-    "triangleApexHeightMm": 144,
+    "swingarmLengthMm": 397,
+    "pivotHeightMm": 307,
+    "shockEyeToEyeMm": 325,
+    "shockStrokeMm": 127,
+    "compressionPct": 28,
+    "shockLowerFromAxleMm": 337,
+    "shockUpperForwardMm": 27,
+    "shockUpperHeightMm": 607,
+    "triangleApexForwardMm": 167,
+    "triangleApexHeightMm": 117,
     "rockerPivotForwardMm": 30,
     "rockerPivotHeightMm": 480,
     "rockerLengthMm": 90,
     "dogboneOnArmMm": 180,
     "dogboneLengthMm": 160,
-    "countershaftForwardMm": 0,
-    "countershaftHeightOffPivotMm": -1,
+    "countershaftForwardMm": -1,
+    "countershaftHeightOffPivotMm": 0,
     "rearSprocketRadiusMm": 110,
     "frontSprocketRadiusMm": 38,
-    "swingarmSectionMm": 54
+    "swingarmSectionMm": 55
   }
 }

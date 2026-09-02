@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 1,
-  "savedAt": "2026-09-01T22:56:59.545Z",
+  "version": 6,
+  "savedAt": "2026-09-02T00:30:18.972Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 152.39999999999998,
@@ -187,8 +187,8 @@
       },
       {
         "id": "a_49",
-        "x": 0,
-        "y": 406.4,
+        "x": 704.8499999999999,
+        "y": 333.375,
         "type": "rear_anchor",
         "label": "Rear End"
       },
@@ -527,5 +527,30 @@
       "aspect": 0.4173693086003373,
       "fileName": "2026-09-01 15_42_02-Modeler\u2122 LightWave 3D\u00ae 2023.0 (Win64).png"
     }
+  },
+  "rearEnd": {
+    "suspensionType": "cantilever",
+    "tireDesignation": "150/80B16",
+    "shockAction": "compression",
+    "swingarmLengthMm": 457,
+    "pivotHeightMm": 269,
+    "shockEyeToEyeMm": 304,
+    "shockStrokeMm": 138,
+    "compressionPct": 23,
+    "shockLowerFromAxleMm": 189,
+    "shockUpperForwardMm": -2,
+    "shockUpperHeightMm": 623,
+    "triangleApexForwardMm": 221,
+    "triangleApexHeightMm": 142,
+    "rockerPivotForwardMm": 30,
+    "rockerPivotHeightMm": 480,
+    "rockerLengthMm": 90,
+    "dogboneOnArmMm": 180,
+    "dogboneLengthMm": 160,
+    "countershaftForwardMm": 1,
+    "countershaftHeightOffPivotMm": -1,
+    "rearSprocketRadiusMm": 110,
+    "frontSprocketRadiusMm": 38,
+    "swingarmSectionMm": 60
   }
 }

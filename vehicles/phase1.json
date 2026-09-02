@@ -1,37 +1,49 @@
 {
   "name": "phase1",
-  "version": 9,
-  "savedAt": "2026-09-02T01:28:04.576Z",
+  "version": 1,
+  "savedAt": "2026-09-02T06:09:40.115Z",
   "brakes": {
     "frontBrake": {
-      "discDiameterMm": 152.39999999999998,
+      "discDiameterMm": 279.4,
       "discThicknessMm": 5,
-      "numberOfPots": 4,
-      "pistonDiameterMm": 30,
+      "pistons": [
+        {
+          "count": 2,
+          "diameterMm": 30
+        }
+      ],
       "padCoefficientOfFriction": 0.45,
       "padAreaMm2": 2400,
       "masterCylinderDiaMm": 16,
       "leverRatio": 4,
-      "dualSided": true
+      "dualSided": true,
+      "numberOfPots": 4,
+      "pistonDiameterMm": 30
     },
     "rearBrake": {
-      "discDiameterMm": 457.2,
+      "discDiameterMm": 406.4,
       "discThicknessMm": 5,
-      "numberOfPots": 3,
-      "pistonDiameterMm": 34,
+      "pistons": [
+        {
+          "count": 4,
+          "diameterMm": 34
+        }
+      ],
       "padCoefficientOfFriction": 0.42,
       "padAreaMm2": 1200,
       "masterCylinderDiaMm": 14,
-      "leverRatio": 3.5,
-      "dualSided": false
+      "leverRatio": 3,
+      "dualSided": false,
+      "numberOfPots": 3,
+      "pistonDiameterMm": 34
     },
     "vehicle": {
-      "wheelbaseMm": 2794,
+      "wheelbaseMm": 3045.1676936594713,
       "cogHeightMm": 609.5999999999999,
       "cogPositionPct": 50,
-      "totalMassKg": 210,
-      "frontTireRadiusMm": 320,
-      "rearTireRadiusMm": 406.4,
+      "totalMassKg": 680.388,
+      "frontTireRadiusMm": 320.9,
+      "rearTireRadiusMm": 399.4,
       "frontTireGrip": 1.2,
       "rearTireGrip": 1.1
     }

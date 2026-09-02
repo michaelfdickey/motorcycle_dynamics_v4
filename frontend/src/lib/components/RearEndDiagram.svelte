@@ -2,6 +2,7 @@
 	import type { RearEndResults, RearSuspensionType, ShockAction } from '$lib/rearEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
+	import { getViewCam, setViewCam, emptySnap, type CamSnap } from '$lib/viewCamera';
 
 	let {
 		results,
@@ -12,6 +13,7 @@
 		shockBodyDiaMm = 50,
 		viewSide = 'right',
 		unitSystem = 'metric',
+		persistKey = 'rearEnd',
 	}: {
 		results: RearEndResults;
 		tire: TireDimensions;
@@ -21,6 +23,7 @@
 		shockBodyDiaMm?: number;
 		viewSide?: 'left' | 'right';
 		unitSystem?: UnitSystem;
+		persistKey?: string;
 	} = $props();
 
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -124,8 +127,47 @@
 		};
 	});
 
+	let povSnaps: Record<string, CamSnap> = {};
+	let camHydrated = false;
+
+	function currentSnap(): CamSnap {
+		return { panX, panY, zoom, freeX, freeY, freeViewW, freeViewH };
+	}
+	function applySnap(s: CamSnap) {
+		panX = s.panX; panY = s.panY; zoom = s.zoom;
+		freeX = s.freeX; freeY = s.freeY; freeViewW = s.freeViewW; freeViewH = s.freeViewH;
+	}
+	function persistCam() {
+		povSnaps[povFocus] = currentSnap();
+		setViewCam(persistKey, { pov: povFocus, snap: currentSnap(), perPov: povSnaps });
+	}
+
+	$effect(() => {
+		if (camHydrated) return;
+		camHydrated = true;
+		const saved = getViewCam(persistKey);
+		if (!saved) return;
+		povSnaps = saved.perPov ?? {};
+		if (saved.pov) povFocus = saved.pov as PovOption;
+		applySnap(saved.snap ?? emptySnap());
+	});
+
+	$effect(() => {
+		return () => persistCam();
+	});
+
 	function selectPov(opt: PovOption) {
-		if (opt === 'free') {
+		povSnaps[povFocus] = currentSnap();
+		if (opt === 'free' && !povSnaps.free) {
+			freeX = lookAt.x;
+			freeY = lookAt.y;
+			freeViewW = bounds.width / Math.max(0.1, zoom);
+			freeViewH = bounds.height / Math.max(0.1, zoom);
+			panX = 0;
+			panY = 0;
+		} else if (povSnaps[opt]) {
+			applySnap(povSnaps[opt]);
+		} else if (opt === 'free') {
 			freeX = lookAt.x;
 			freeY = lookAt.y;
 			freeViewW = bounds.width / Math.max(0.1, zoom);
@@ -135,6 +177,7 @@
 		}
 		povFocus = opt;
 		povMenuOpen = false;
+		persistCam();
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -163,7 +206,7 @@
 			panY = panStartPanY + dy;
 		}
 	}
-	function onPointerUp() { isPanning = false; }
+	function onPointerUp() { isPanning = false; persistCam(); }
 	function onWheel(e: WheelEvent) {
 		if (!e.shiftKey) return;
 		e.preventDefault();
@@ -177,6 +220,7 @@
 		} else {
 			zoom = Math.max(0.1, Math.min(20, zoom * factor));
 		}
+		persistCam();
 	}
 
 	const sw = $derived(bounds.width / 320);

@@ -553,13 +553,10 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 	let roadMarkers = $derived(getRoadMarkers());
 </script>
 
-<div class="space-y-4">
+<div class="flex flex-col min-h-0 flex-1 gap-2">
 	<!-- Header row: title + description + vehicle save/load -->
-	<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+	<div class="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
 		<h2 class="text-2xl font-bold whitespace-nowrap">Braking System</h2>
-		<p class="text-gray-400 text-sm">
-			Define brake parameters, simulate real-time braking dynamics with weight transfer and tire grip limits.
-		</p>
 		<div class="ml-auto flex items-center gap-2">
 			<input type="text" bind:value={vehicleName}
 				list="vehicle-list"
@@ -581,25 +578,26 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
+	<div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,26rem)] grid-rows-[minmax(0,1fr)] gap-4">
 		<!-- LEFT: Diagram + Simulation -->
-		<div class="space-y-4">
+		<div class="min-h-0 h-full flex flex-col gap-3">
 			<!-- Side-view schematic -->
-			<section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
-				<div class="flex items-center justify-between mb-3">
+			<section class="flex-1 min-h-0 rounded-xl border border-gray-800 bg-gray-900 p-3 flex flex-col">
+				<div class="shrink-0 flex items-center justify-between mb-2">
 					<select
 						bind:value={viewSide}
-						class="text-sm font-semibold uppercase tracking-wide bg-gray-800 border border-gray-700 text-gray-500 rounded px-2 py-1 focus:outline-none focus:border-orange-500"
+						class="rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-gray-200"
 					>
-						<option value="right">Right Side View - Braking Dynamics</option>
-						<option value="left">Left Side View - Braking Dynamics</option>
+						<option value="right">Right Side View</option>
+						<option value="left">Left Side View</option>
 					</select>
 					<button onclick={requestFeedback} disabled={feedbackLoading}
 						class="px-3 py-1 text-xs font-medium rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-colors disabled:opacity-50">
 						{feedbackLoading ? '⏳ Analyzing...' : '💡 Feedback'}
 					</button>
 				</div>
-				<svg viewBox="0 0 {svgWidth} {svgHeight}" class="w-full h-auto bg-gray-950 rounded-lg border border-gray-800">
+				<div class="flex-1 min-h-[50vh] lg:min-h-0 overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
+				<svg viewBox="0 0 {svgWidth} {svgHeight}" class="w-full h-full" preserveAspectRatio="xMidYMid meet">
 					<defs>
 						<marker id="arrowGreen" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
 							<path d="M0,0 L6,3 L0,6 Z" fill="#22c55e" />
@@ -756,10 +754,11 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						{/if}
 					{/if}
 				</svg>
+				</div>
 			</section>
 
 			<!-- Simulation controls — single compact row -->
-			<section class="rounded-xl border border-gray-800 bg-gray-900 p-3">
+			<section class="shrink-0 rounded-xl border border-gray-800 bg-gray-900 p-3">
 				<div class="flex flex-wrap items-center gap-2">
 					<!-- Speed input -->
 					<label class="text-xs text-gray-400">
@@ -839,50 +838,52 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					</label>
 				</div>
 			</section>
+		</div>
 
-			<!-- Results readout -->
+		<!-- RIGHT: Results + parameter inputs -->
+		<div class="min-h-0 h-full overflow-y-auto space-y-4 pr-1">
 			{#if results}
-				<section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
-					<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Braking Results</h3>
-					<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-						<div class="bg-gray-800/50 rounded p-3">
+				<section class="rounded-xl border border-gray-800 bg-gray-900 p-3">
+					<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Braking Results</h3>
+					<div class="grid grid-cols-2 gap-2 text-sm">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Deceleration</div>
 							<div class="text-lg font-bold text-orange-400">{results.decelerationG.toFixed(2)} G</div>
 							<div class="text-gray-500 text-xs">{results.decelerationMs2.toFixed(1)} m/s²</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Stopping (100→0)</div>
 							<div class="text-lg font-bold text-orange-400">{results.stoppingDistanceM.toFixed(1)} m</div>
 							<div class="text-gray-500 text-xs">{(results.stoppingDistanceM * 3.281).toFixed(0)} ft / {results.stoppingTimeS.toFixed(2)} s</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Weight Transfer</div>
 							<div class="text-lg font-bold text-green-400">{results.weightTransferN.toFixed(0)} N</div>
 							<div class="text-gray-500 text-xs">{nToLbf(results.weightTransferN).toFixed(1)} lbf → Front</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Axle Loads</div>
 							<div class="text-xs text-gray-300">F: {results.frontAxleLoadN.toFixed(0)} N ({nToLbf(results.frontAxleLoadN).toFixed(0)} lbf)</div>
 							<div class="text-xs text-gray-300">R: {results.rearAxleLoadN.toFixed(0)} N ({nToLbf(results.rearAxleLoadN).toFixed(0)} lbf)</div>
 							{#if results.frontLockup}<span class="text-xs text-red-400 font-bold">⚠ Front lockup</span>{/if}
 							{#if results.rearLockup}<span class="text-xs text-red-400 font-bold">⚠ Rear lockup</span>{/if}
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Front Torque</div>
 							<div class="text-lg font-bold text-gray-200">{results.frontBrakeTorqueNm.toFixed(1)} Nm</div>
 							<div class="text-gray-500 text-xs">{(results.frontBrakeTorqueNm * 0.7376).toFixed(1)} ft·lbf</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Rear Torque</div>
 							<div class="text-lg font-bold text-gray-200">{results.rearBrakeTorqueNm.toFixed(1)} Nm</div>
 							<div class="text-gray-500 text-xs">{(results.rearBrakeTorqueNm * 0.7376).toFixed(1)} ft·lbf</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Front Patch Force</div>
 							<div class="text-lg font-bold text-gray-200">{results.frontBrakeForceN.toFixed(0)} N</div>
 							<div class="text-gray-500 text-xs">{nToLbf(results.frontBrakeForceN).toFixed(0)} lbf</div>
 						</div>
-						<div class="bg-gray-800/50 rounded p-3">
+						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Rear Patch Force</div>
 							<div class="text-lg font-bold text-gray-200">{results.rearBrakeForceN.toFixed(0)} N</div>
 							<div class="text-gray-500 text-xs">{nToLbf(results.rearBrakeForceN).toFixed(0)} lbf</div>
@@ -890,10 +891,6 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					</div>
 				</section>
 			{/if}
-		</div>
-
-		<!-- RIGHT: Parameter inputs (dual metric / US columns) -->
-		<div class="space-y-4">
 			<!-- Column header -->
 			<div class="grid grid-cols-[1fr_80px_80px] gap-1 px-4 text-[10px] font-semibold text-gray-500 uppercase">
 				<span></span>

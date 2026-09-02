@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { listVehicles, saveVehicleDesign, loadVehicleDesign, getLastFileName, setLastFileName, type VehicleDesign } from '$lib/vehicleStore';
 	import { computeFrontEnd, type FrontEndResults, type FrontEndInputs } from '$lib/frontEndGeometry';
+	import { computeRearEnd, type RearEndResults, type RearEndInputs, type RearSuspensionType, type ShockAction } from '$lib/rearEndGeometry';
 	import { parseTireDesignation, computeTireDimensions, type TireDimensions } from '$lib/tire';
 	import { saveRefImageBlob, loadRefImageBlob, clearRefImageBlob } from '$lib/refImageCache';
 
@@ -1139,10 +1140,17 @@
 	let frontEndData = $state<any>(null);
 	let frontEndResults = $state<FrontEndResults | null>(null);
 	let frontEndTire = $state<TireDimensions | null>(null);
+	let rearEndData = $state<any>(null);
+	let rearEndResults = $state<RearEndResults | null>(null);
+	let rearEndTire = $state<TireDimensions | null>(null);
 
 	// Load front end data whenever vehicle name changes or on mount
 	async function loadFrontEndData() {
-		if (!vehicleName.trim()) { frontEndData = null; frontEndResults = null; frontEndTire = null; return; }
+		if (!vehicleName.trim()) {
+			frontEndData = null; frontEndResults = null; frontEndTire = null;
+			rearEndData = null; rearEndResults = null; rearEndTire = null;
+			return;
+		}
 		try {
 			const design = await loadVehicleDesign(vehicleName);
 			if (design?.frontEnd) {
@@ -1150,22 +1158,63 @@
 				const fe = design.frontEnd as any;
 				const tireStr = fe.tireDesignation || '120/70ZR17';
 				const parsed = parseTireDesignation(tireStr);
-				const tire = computeTireDimensions(parsed);
-				frontEndTire = tire;
-				const inputs: FrontEndInputs = {
-					suspensionType: fe.suspensionType || 'telescopic',
-					rakeAngleDeg: fe.rakeAngleDeg ?? rakeAngleDeg,
-					forkOffsetMm: fe.forkOffsetMm ?? 40,
-					linkLengthMm: fe.linkLengthMm ?? 200,
-					linkOffsetMm: fe.linkOffsetMm ?? 0,
-					steeringColumnHeightMm: fe.steeringColumnHeightMm ?? 200,
-					forkLengthMm: fe.forkLengthMm ?? 600,
-				};
-				frontEndResults = computeFrontEnd(inputs, tire);
+				if (parsed) {
+					const tire = computeTireDimensions(parsed);
+					frontEndTire = tire;
+					const inputs: FrontEndInputs = {
+						suspensionType: fe.suspensionType || 'telescopic',
+						rakeAngleDeg: fe.rakeAngleDeg ?? rakeAngleDeg,
+						forkOffsetMm: fe.forkOffsetMm ?? 40,
+						linkLengthMm: fe.linkLengthMm ?? 200,
+						linkOffsetMm: fe.linkOffsetMm ?? 0,
+						steeringColumnHeightMm: fe.steeringColumnHeightMm ?? 200,
+						forkLengthMm: fe.forkLengthMm ?? 600,
+					};
+					frontEndResults = computeFrontEnd(inputs, tire);
+				}
 			} else {
 				frontEndData = null; frontEndResults = null; frontEndTire = null;
 			}
-		} catch { frontEndData = null; frontEndResults = null; frontEndTire = null; }
+			if (design?.rearEnd) {
+				rearEndData = design.rearEnd;
+				const re = design.rearEnd as any;
+				const tireStr = re.tireDesignation || '150/80B16';
+				const parsed = parseTireDesignation(tireStr);
+				if (parsed) {
+					const tire = computeTireDimensions(parsed);
+					rearEndTire = tire;
+					const inputs: RearEndInputs = {
+						suspensionType: (re.suspensionType || 'twin_shock') as RearSuspensionType,
+						shockAction: (re.shockAction || 'compression') as ShockAction,
+						swingarmLengthMm: re.swingarmLengthMm ?? 520,
+						pivotHeightMm: re.pivotHeightMm ?? 340,
+						shockEyeToEyeMm: re.shockEyeToEyeMm ?? 330,
+						shockStrokeMm: re.shockStrokeMm ?? 70,
+						compressionPct: re.compressionPct ?? 20,
+						shockLowerFromAxleMm: re.shockLowerFromAxleMm ?? 90,
+						shockUpperForwardMm: re.shockUpperForwardMm ?? 40,
+						shockUpperHeightMm: re.shockUpperHeightMm ?? 620,
+						triangleApexForwardMm: re.triangleApexForwardMm ?? 120,
+						triangleApexHeightMm: re.triangleApexHeightMm ?? 220,
+						rockerPivotForwardMm: re.rockerPivotForwardMm ?? 30,
+						rockerPivotHeightMm: re.rockerPivotHeightMm ?? 480,
+						rockerLengthMm: re.rockerLengthMm ?? 90,
+						dogboneOnArmMm: re.dogboneOnArmMm ?? 180,
+						dogboneLengthMm: re.dogboneLengthMm ?? 160,
+						countershaftForwardMm: re.countershaftForwardMm ?? -20,
+						countershaftHeightOffPivotMm: re.countershaftHeightOffPivotMm ?? -10,
+						rearSprocketRadiusMm: re.rearSprocketRadiusMm ?? 110,
+						frontSprocketRadiusMm: re.frontSprocketRadiusMm ?? 38,
+					};
+					rearEndResults = computeRearEnd(inputs, tire);
+				}
+			} else {
+				rearEndData = null; rearEndResults = null; rearEndTire = null;
+			}
+		} catch {
+			frontEndData = null; frontEndResults = null; frontEndTire = null;
+			rearEndData = null; rearEndResults = null; rearEndTire = null;
+		}
 	}
 
 	// Helper: get anchor node by type
@@ -1245,7 +1294,7 @@
 
 <svelte:window onkeydown={onKeyDown} onpaste={onPaste} />
 
-<div class="flex flex-col w-full h-[min(96vh,1040px)] min-h-[640px] rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
+<div class="flex flex-col w-full flex-1 min-h-0 h-full rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
 	<!-- Top Toolbar -->
 	<div class="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-1.5 text-xs shrink-0 flex-wrap">
 		<select class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 text-xs"
@@ -1894,6 +1943,59 @@
 						<text x={labelX + 10} y={labelY - 5} fill={feColor} font-size="10" opacity={feOpacity * 0.8}>
 							Front End
 						</text>
+					{/if}
+				{/if}
+
+				<!-- Rear End geometry overlay (anchored at rear_anchor = swingarm pivot) -->
+				{#if showRearEnd && rearEndResults && rearEndTire}
+					{@const reAnchor = getAnchorNode('rear_anchor')}
+					{#if reAnchor}
+						{@const re = rearEndResults}
+						{@const red = rearEndData}
+						{@const ox = reAnchor.x - re.pivot.x}
+						{@const oy = reAnchor.y - re.pivot.y}
+						{@const reColor = '#22d3ee'}
+						{@const reOp = 0.65}
+						{@const [axX, axY] = worldToScreen(re.axleCenter.x + ox, re.axleCenter.y + oy)}
+						{@const [pvX, pvY] = worldToScreen(re.pivot.x + ox, re.pivot.y + oy)}
+						{@const [sh1x, sh1y] = worldToScreen(re.shockLower.x + ox, re.shockLower.y + oy)}
+						{@const [sh2x, sh2y] = worldToScreen(re.shockUpper.x + ox, re.shockUpper.y + oy)}
+						{@const [csX, csY] = worldToScreen(re.countershaft.x + ox, re.countershaft.y + oy)}
+						{@const wheelR = rearEndTire.outerRadiusMm * zoom}
+						{@const rimR = rearEndTire.rimRadiusMm * zoom}
+						<line x1={axX} y1={axY} x2={pvX} y2={pvY}
+							stroke={reColor} stroke-width={Math.max(2, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.35)} opacity={reOp * 0.85} stroke-linecap="round" />
+						{#if re.apex}
+							{@const [apX, apY] = worldToScreen(re.apex.x + ox, re.apex.y + oy)}
+							<line x1={axX} y1={axY} x2={apX} y2={apY} stroke={reColor} stroke-width={Math.max(1.5, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.18)} opacity={reOp} />
+							<line x1={pvX} y1={pvY} x2={apX} y2={apY} stroke={reColor} stroke-width={Math.max(1.5, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.18)} opacity={reOp} />
+							<circle cx={apX} cy={apY} r={3} fill={reColor} opacity={reOp} />
+						{/if}
+						{#if re.rockerPivot && re.rockerDogbone && re.rockerShock && re.dogboneArm}
+							{@const [rpX, rpY] = worldToScreen(re.rockerPivot.x + ox, re.rockerPivot.y + oy)}
+							{@const [rdX, rdY] = worldToScreen(re.rockerDogbone.x + ox, re.rockerDogbone.y + oy)}
+							{@const [rsX, rsY] = worldToScreen(re.rockerShock.x + ox, re.rockerShock.y + oy)}
+							{@const [daX, daY] = worldToScreen(re.dogboneArm.x + ox, re.dogboneArm.y + oy)}
+							<line x1={daX} y1={daY} x2={rdX} y2={rdY} stroke={reColor} stroke-width="1.5" opacity={reOp} />
+							<line x1={rdX} y1={rdY} x2={rsX} y2={rsY} stroke={reColor} stroke-width="2" opacity={reOp} />
+							<circle cx={rpX} cy={rpY} r={3} fill={reColor} opacity={reOp} />
+						{/if}
+						{#if (red?.suspensionType ?? 'twin_shock') !== 'hardtail'}
+							<line x1={sh1x} y1={sh1y} x2={sh2x} y2={sh2y} stroke={reColor} stroke-width="2" opacity={reOp} />
+							<circle cx={sh1x} cy={sh1y} r={3} fill={reColor} opacity={reOp} />
+							<circle cx={sh2x} cy={sh2y} r={3} fill={reColor} opacity={reOp} />
+						{/if}
+						{@const tireW = (rearEndTire.outerRadiusMm - rearEndTire.rimRadiusMm) * zoom}
+						{@const tireMidR = (rearEndTire.outerRadiusMm + rearEndTire.rimRadiusMm) / 2 * zoom}
+						<circle cx={axX} cy={axY} r={wheelR} fill="none" stroke={reColor} stroke-width="1.5" opacity={reOp * 0.7} />
+						<circle cx={axX} cy={axY} r={rimR} fill="none" stroke={reColor} stroke-width="1" opacity={reOp * 0.4} />
+						<circle cx={axX} cy={axY} r={tireMidR} fill="none" stroke={reColor} stroke-width={tireW} opacity={reOp * 0.12} />
+						{@const [cpX, cpY] = worldToScreen(re.contactPatch.x + ox, re.contactPatch.y + oy)}
+						<circle cx={cpX} cy={cpY} r={4} fill={reColor} stroke="#fff" stroke-width="1" opacity={reOp} />
+						<circle cx={csX} cy={csY} r={Math.max(3, (red?.frontSprocketRadiusMm ?? 38) * zoom * 0.4)} fill="none" stroke={reColor} stroke-width="1" opacity={reOp * 0.5} />
+						<circle cx={pvX} cy={pvY} r={5} fill={reColor} stroke="#fff" stroke-width="1" opacity={reOp} />
+						<circle cx={axX} cy={axY} r={3} fill={reColor} opacity={reOp} />
+						<text x={pvX + 8} y={pvY - 8} fill={reColor} font-size="10" opacity={reOp * 0.85}>Rear End</text>
 					{/if}
 				{/if}
 

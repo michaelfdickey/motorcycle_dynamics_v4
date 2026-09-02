@@ -6,6 +6,8 @@
 
 	import FrontEndDiagram from '$lib/components/FrontEndDiagram.svelte';
 
+	import { getViewUi, setViewUi } from '$lib/viewCamera';
+
 	import { browser } from '$app/environment';
 
 	import { untrack } from 'svelte';
@@ -340,8 +342,13 @@
 
 
 
-	let viewSide = $state<'right' | 'left'>('right');
-	let unitSystem = $state<'metric' | 'us'>('metric');
+	let viewSide = $state<'right' | 'left'>((browser && getViewUi('frontEnd')?.viewSide) || 'right');
+	let unitSystem = $state<'metric' | 'us'>((browser && getViewUi('frontEnd')?.unitSystem) || 'metric');
+
+	$effect(() => {
+		if (!browser) return;
+		setViewUi('frontEnd', { viewSide, unitSystem });
+	});
 
 	let suspensionType = $state<SuspensionType>('telescopic');
 
@@ -983,9 +990,9 @@
 
 
 
-<div class="space-y-6">
+<div class="flex flex-col min-h-0 flex-1 gap-2">
 
-	<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+	<div class="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
 
 		<h2 class="text-2xl font-bold whitespace-nowrap">Front End Geometry</h2>
 
@@ -1031,11 +1038,11 @@
 
 
 
-	<div class="grid gap-6" class:grid-cols-[minmax(280px,1fr)_2fr]={!showTrailChart} class:grid-cols-[minmax(260px,1fr)_2fr_2fr]={showTrailChart}>
+	<div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] gap-4">
 
-		<!-- â”€â”€ Left column: Inputs â”€â”€ -->
+		<!-- Left column: Inputs -->
 
-		<div class="space-y-4">
+		<div class="min-h-0 overflow-y-auto pr-1 space-y-4">
 
 
 
@@ -1929,46 +1936,99 @@
 
 
 
-		<!-- â”€â”€ Right column: Diagram + Results below â”€â”€ -->
+		<!-- Right column: Diagram + Results -->
 
-		<div class="space-y-4">
+		<div class="min-h-0 h-full flex flex-col gap-3">
 
-		<div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
+			<div class="shrink-0 flex items-center gap-2">
 
-				<div class="flex items-center justify-between mb-3">
+				<select
 
-					<select
+					bind:value={viewSide}
 
-						bind:value={viewSide}
+					class="rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-gray-200"
 
-						class="text-sm font-semibold uppercase tracking-wide bg-gray-800 border border-gray-700 text-gray-400 rounded px-2 py-1 focus:outline-none focus:border-orange-500"
+				>
 
-					>
+					<option value="right">Right Side View</option>
 
-						<option value="right">Right Side View</option>
+					<option value="left">Left Side View</option>
 
-						<option value="left">Left Side View</option>
+				</select>
+				<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'metric' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'metric'}>mm</button>
+				<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'us' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'us'}>in</button>
+				<span class="text-[10px] text-gray-600">Grid {unitSystem === 'us' ? '6"' : '10 cm'}. Shift+wheel zoom. Floating view does not auto-zoom.</span>
 
-					</select>
-					<div class="flex items-center gap-1">
-						<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'metric' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'metric'}>mm</button>
-						<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'us' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'us'}>in</button>
-						<span class="text-[10px] text-gray-600 ml-1">Grid {unitSystem === 'us' ? '6"' : '10 cm'}</span>
-					</div>
+			</div>
 
-				</div>
+			<div class="flex-1 min-h-[50vh] lg:min-h-0 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden relative">
 
 				{#if results && tireDims}
 
-					<div class="aspect-[4/3] w-full">
+					<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} {suspUpperMountOffsetMm} {linkLengthMm} {linkOffsetMm} {viewSide} {unitSystem} />
 
-						<FrontEndDiagram {results} tire={tireDims} {steeringColumnLengthMm} {forkOffsetMm} {forkLengthMm} {suspensionType} {forkTravelMm} {compressionPct} {spindleOffsetMm} {spindleHeightMm} {stanchionDiaMm} {sliderDiaMm} {invertedForks} {suspensionOffsetMm} {suspensionHeightMm} {suspUpperMountHeightMm} {suspUpperMountOffsetMm} {linkLengthMm} {linkOffsetMm} {viewSide} {unitSystem} />
-
+					{#if showTrailChart && trailSweep}
+					<div class="absolute bottom-2 left-2 z-20 w-[min(100%-1rem,22rem)] rounded-lg border border-gray-700 bg-gray-900/95 p-3 shadow-xl">
+						<div class="flex items-center justify-between mb-2">
+							<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Trail vs Travel</h3>
+							<button type="button" class="text-gray-500 hover:text-gray-300" onclick={() => showTrailChart = false} title="Close chart">
+								<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						</div>
+						<div class="relative w-full h-40 border border-gray-700 rounded bg-gray-800">
+							<svg class="w-full h-full" viewBox="0 0 500 375" preserveAspectRatio="none">
+								{#each [0.25, 0.5, 0.75] as frac}
+									<line x1="40" y1={375 * frac} x2="500" y2={375 * frac} stroke="#374151" stroke-width="0.5" />
+									<line x1={40 + 460 * frac} y1="0" x2={40 + 460 * frac} y2="355" stroke="#374151" stroke-width="0.5" />
+								{/each}
+								<line x1="40" y1="355" x2="500" y2="355" stroke="#6b7280" stroke-width="1" />
+								<line x1="40" y1="0" x2="40" y2="355" stroke="#6b7280" stroke-width="1" />
+								<polyline
+									fill="none"
+									stroke="#f97316"
+									stroke-width="2.5"
+									points={trailSweep.data.map((d) => {
+										const x = 40 + (d.pct / 100) * 460;
+										const range = trailSweep.max - trailSweep.min || 1;
+										const y = 345 - ((d.trail - trailSweep.min) / range) * 330;
+										return `${x},${y}`;
+									}).join(' ')}
+								/>
+								{#if true}
+									{@const sagX = 40 + (sagPct / 100) * 460}
+									{@const sagTrailVal = trailSweep.data[Math.round(sagPct / 100 * (trailSweep.data.length - 1))]?.trail ?? 0}
+									{@const sagRange = trailSweep.max - trailSweep.min || 1}
+									{@const sagY = 345 - ((sagTrailVal - trailSweep.min) / sagRange) * 330}
+									<line x1={sagX} y1="0" x2={sagX} y2="355" stroke="#22d3ee" stroke-width="0.75" stroke-dasharray="2,4" />
+									<circle cx={sagX} cy={sagY} r="4" fill="none" stroke="#22d3ee" stroke-width="1.5" />
+									<text x={sagX + 4} y="10" fill="#22d3ee" font-size="9" font-family="monospace">sag</text>
+								{/if}
+								{#if true}
+									{@const cx = 40 + (compressionPct / 100) * 460}
+									{@const curTrail = trailSweep.data[Math.round(compressionPct / 100 * (trailSweep.data.length - 1))]?.trail ?? 0}
+									{@const range = trailSweep.max - trailSweep.min || 1}
+									{@const cy = 345 - ((curTrail - trailSweep.min) / range) * 330}
+									<line x1={cx} y1="0" x2={cx} y2="355" stroke="#f97316" stroke-width="0.5" stroke-dasharray="4,3" />
+									<line x1="40" y1={cy} x2="500" y2={cy} stroke="#f97316" stroke-width="0.5" stroke-dasharray="4,3" />
+									<circle cx={cx} cy={cy} r="6" fill="#f97316" stroke="#fff" stroke-width="2" />
+									<text x={cx} y={cy - 12} text-anchor="middle" fill="#fbbf24" font-size="11" font-family="monospace">{curTrail.toFixed(1)} mm ({mmToIn(curTrail).toFixed(2)}")</text>
+								{/if}
+								<text x="40" y="370" fill="#9ca3af" font-size="10">0%</text>
+								<text x="270" y="370" text-anchor="middle" fill="#9ca3af" font-size="10">50%</text>
+								<text x="495" y="370" text-anchor="end" fill="#9ca3af" font-size="10">100%</text>
+								<text x="36" y="15" text-anchor="end" fill="#9ca3af" font-size="10">{trailSweep.max.toFixed(0)}</text>
+								<text x="36" y="350" text-anchor="end" fill="#9ca3af" font-size="10">{trailSweep.min.toFixed(0)}</text>
+								<text x="36" y="182" text-anchor="end" fill="#9ca3af" font-size="10">{((trailSweep.max + trailSweep.min) / 2).toFixed(0)}</text>
+							</svg>
+						</div>
 					</div>
+					{/if}
 
 				{:else}
 
-					<div class="flex items-center justify-center h-64 text-gray-600">
+					<div class="flex h-full items-center justify-center text-sm text-gray-500">
 
 						Enter valid parameters to see diagram
 
@@ -1984,7 +2044,7 @@
 
 			{#if results && tireDims}
 
-				<div class="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
+				<div class="shrink-0 overflow-y-auto max-h-[28vh] rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
 
 					<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Calculated Results</h3>
 
@@ -2139,156 +2199,6 @@
 			{/if}
 
 		</div>
-
-
-
-		<!-- â”€â”€ Chart column (shown when active) â”€â”€ -->
-
-		{#if showTrailChart && trailSweep}
-
-		<div class="space-y-4">
-
-			<div class="rounded-lg border border-gray-800 bg-gray-900 p-4">
-
-				<div class="flex items-center justify-between mb-3">
-
-					<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Trail vs Suspension Travel</h3>
-
-					<button type="button" class="text-gray-500 hover:text-gray-300" onclick={() => showTrailChart = false} title="Close chart">
-
-						<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-
-							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-
-						</svg>
-
-					</button>
-
-				</div>
-
-				<div class="relative w-full aspect-[4/3] border border-gray-700 rounded bg-gray-800">
-
-					<svg class="w-full h-full" viewBox="0 0 500 375" preserveAspectRatio="none">
-
-						<!-- Grid lines -->
-
-						{#each [0.25, 0.5, 0.75] as frac}
-
-							<line x1="40" y1={375 * frac} x2="500" y2={375 * frac} stroke="#374151" stroke-width="0.5" />
-
-							<line x1={40 + 460 * frac} y1="0" x2={40 + 460 * frac} y2="355" stroke="#374151" stroke-width="0.5" />
-
-						{/each}
-
-						<!-- Axes -->
-
-						<line x1="40" y1="355" x2="500" y2="355" stroke="#6b7280" stroke-width="1" />
-
-						<line x1="40" y1="0" x2="40" y2="355" stroke="#6b7280" stroke-width="1" />
-
-						<!-- Chart line -->
-
-						<polyline
-
-							fill="none"
-
-							stroke="#f97316"
-
-							stroke-width="2.5"
-
-							points={trailSweep.data.map((d) => {
-
-								const x = 40 + (d.pct / 100) * 460;
-
-								const range = trailSweep.max - trailSweep.min || 1;
-
-								const y = 345 - ((d.trail - trailSweep.min) / range) * 330;
-
-								return `${x},${y}`;
-
-							}).join(' ')}
-
-						/>
-
-						<!-- Sag marker (30%) -->
-
-						{#if true}
-
-							{@const sagX = 40 + (sagPct / 100) * 460}
-
-							{@const sagTrailVal = trailSweep.data[Math.round(sagPct / 100 * (trailSweep.data.length - 1))]?.trail ?? 0}
-
-							{@const sagRange = trailSweep.max - trailSweep.min || 1}
-
-							{@const sagY = 345 - ((sagTrailVal - trailSweep.min) / sagRange) * 330}
-
-							<line x1={sagX} y1="0" x2={sagX} y2="355" stroke="#22d3ee" stroke-width="0.75" stroke-dasharray="2,4" />
-
-							<circle cx={sagX} cy={sagY} r="4" fill="none" stroke="#22d3ee" stroke-width="1.5" />
-
-							<text x={sagX + 4} y="10" fill="#22d3ee" font-size="9" font-family="monospace">sag</text>
-
-						{/if}
-
-						<!-- Current position marker -->
-
-						{#if true}
-
-							{@const cx = 40 + (compressionPct / 100) * 460}
-
-							{@const curTrail = trailSweep.data[Math.round(compressionPct / 100 * (trailSweep.data.length - 1))]?.trail ?? 0}
-
-							{@const range = trailSweep.max - trailSweep.min || 1}
-
-							{@const cy = 345 - ((curTrail - trailSweep.min) / range) * 330}
-
-							<!-- Vertical tracking line -->
-
-							<line x1={cx} y1="0" x2={cx} y2="355" stroke="#f97316" stroke-width="0.5" stroke-dasharray="4,3" />
-
-							<!-- Horizontal tracking line -->
-
-							<line x1="40" y1={cy} x2="500" y2={cy} stroke="#f97316" stroke-width="0.5" stroke-dasharray="4,3" />
-
-							<circle cx={cx} cy={cy} r="6" fill="#f97316" stroke="#fff" stroke-width="2" />
-
-							<!-- Value label -->
-
-							<text x={cx} y={cy - 12} text-anchor="middle" fill="#fbbf24" font-size="11" font-family="monospace">{curTrail.toFixed(1)} mm ({mmToIn(curTrail).toFixed(2)}")</text>
-
-						{/if}
-
-						<!-- X-axis labels -->
-
-						<text x="40" y="370" fill="#9ca3af" font-size="10">0%</text>
-
-						<text x="270" y="370" text-anchor="middle" fill="#9ca3af" font-size="10">50%</text>
-
-						<text x="495" y="370" text-anchor="end" fill="#9ca3af" font-size="10">100%</text>
-
-						<!-- Y-axis labels -->
-
-						<text x="36" y="15" text-anchor="end" fill="#9ca3af" font-size="10">{trailSweep.max.toFixed(0)}</text>
-
-						<text x="36" y="350" text-anchor="end" fill="#9ca3af" font-size="10">{trailSweep.min.toFixed(0)}</text>
-
-						<text x="36" y="182" text-anchor="end" fill="#9ca3af" font-size="10">{((trailSweep.max + trailSweep.min) / 2).toFixed(0)}</text>
-
-					</svg>
-
-					<!-- Axis title labels -->
-
-					<div class="absolute bottom-0 left-0 right-0 text-center text-[10px] text-gray-500">Suspension Travel</div>
-
-					<div class="absolute top-1/2 -left-1 -translate-y-1/2 -rotate-90 origin-center text-[10px] text-gray-500 whitespace-nowrap">Trail (mm)</div>
-
-				</div>
-
-			</div>
-
-		</div>
-
-		{/if}
 
 	</div>
 

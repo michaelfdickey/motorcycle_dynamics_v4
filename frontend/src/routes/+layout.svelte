@@ -3,6 +3,9 @@
 	import { page } from '$app/state';
 	let { children } = $props();
 
+	const workspace = ['/frame', '/front-end', '/rear-end', '/brakes'];
+	const isWorkspace = $derived(workspace.some((p) => page.url.pathname.startsWith(p)));
+
 	const tabs = [
 		{ label: 'Home', href: '/' },
 		{ label: 'Frame', href: '/frame' },
@@ -20,7 +23,7 @@
 	];
 </script>
 
-<div class="min-h-screen bg-gray-950 text-gray-100 flex flex-col {page.url.pathname.startsWith('/rear-end') ? 'h-screen overflow-hidden' : ''}">
+<div class="min-h-screen bg-gray-950 text-gray-100 flex flex-col {isWorkspace ? 'h-screen overflow-hidden max-lg:h-auto max-lg:overflow-visible' : ''}">
 	<header class="border-b border-gray-800 bg-gray-900">
 		<div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
 			<div class="flex items-center gap-3">
@@ -53,11 +56,11 @@
 		</nav>
 	</header>
 
-	<main class="mx-auto max-w-[120rem] px-6 {page.url.pathname.startsWith('/frame') || page.url.pathname.startsWith('/rear-end') ? 'py-3 flex-1 min-h-0 w-full' : 'py-8'} {page.url.pathname.startsWith('/rear-end') ? 'overflow-hidden flex flex-col' : ''}">
+	<main class="mx-auto max-w-[120rem] px-6 w-full {isWorkspace ? 'py-3 flex-1 min-h-0 overflow-hidden flex flex-col max-lg:overflow-visible' : 'py-8'}">
 		{@render children()}
 	</main>
 
-	{#if !page.url.pathname.startsWith('/rear-end')}
+	{#if !isWorkspace}
 	<footer class="border-t border-gray-800 mt-auto">
 		<div class="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-gray-600">
 			Mototelos Motorcycle Dynamics v0.1.0

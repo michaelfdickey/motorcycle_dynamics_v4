@@ -8,6 +8,7 @@
 	} from '$lib/rearEndGeometry';
 	import RearEndDiagram from '$lib/components/RearEndDiagram.svelte';
 	import LengthSlider from '$lib/components/LengthSlider.svelte';
+	import { getViewUi, setViewUi } from '$lib/viewCamera';
 	import { browser } from '$app/environment';
 	import { untrack } from 'svelte';
 	import {
@@ -63,8 +64,12 @@
 		localStorage.setItem(storageKey(type), JSON.stringify(state));
 	}
 
-	let viewSide = $state<'right' | 'left'>('right');
-	let unitSystem = $state<'metric' | 'us'>('metric');
+	let viewSide = $state<'right' | 'left'>((browser && getViewUi('rearEnd')?.viewSide) || 'right');
+	let unitSystem = $state<'metric' | 'us'>((browser && getViewUi('rearEnd')?.unitSystem) || 'metric');
+	$effect(() => {
+		if (!browser) return;
+		setViewUi('rearEnd', { viewSide, unitSystem });
+	});
 	let suspensionType = $state<RearSuspensionType>('twin_shock');
 	let shockAction = $state<ShockAction>('compression');
 	let tireDesignation = $state('150/80B16');
@@ -333,7 +338,7 @@
 		</div>
 	</div>
 
-	<div class="flex-1 min-h-0 grid grid-cols-[minmax(300px,24rem)_minmax(0,1fr)] gap-4">
+	<div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] gap-4">
 		<div class="min-h-0 overflow-y-auto pr-1 space-y-4">
 			<div class="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
 				<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Suspension Type</h3>
@@ -449,7 +454,7 @@
 			</div>
 		</div>
 
-		<div class="min-h-0 flex flex-col gap-3">
+		<div class="min-h-0 h-full flex flex-col gap-3">
 			<div class="shrink-0 flex items-center gap-2">
 				<select bind:value={viewSide} class="rounded-md bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-gray-200">
 					<option value="right">Right side view</option>
@@ -459,7 +464,7 @@
 				<button type="button" class="px-2 py-1 text-xs rounded {unitSystem === 'us' ? 'bg-orange-600/30 text-orange-300' : 'text-gray-500'}" onclick={() => unitSystem = 'us'}>in</button>
 				<span class="text-[10px] text-gray-600">Grid {unitSystem === 'us' ? '6"' : '10 cm'}. Shift+wheel zoom. Floating view does not auto-zoom.</span>
 			</div>
-			<div class="flex-1 min-h-0 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
+			<div class="flex-1 min-h-[50vh] lg:min-h-0 rounded-lg border border-gray-800 bg-gray-950 overflow-hidden">
 				{#if results && tireDims}
 					<RearEndDiagram
 						{results}

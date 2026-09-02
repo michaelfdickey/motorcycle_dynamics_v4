@@ -2,8 +2,9 @@
 	import type { FrontEndResults } from '$lib/frontEndGeometry';
 	import type { TireDimensions } from '$lib/tire';
 	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
+	import { getViewCam, setViewCam, emptySnap, type CamSnap } from '$lib/viewCamera';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right', unitSystem = 'metric' }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right'; unitSystem?: UnitSystem } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right', unitSystem = 'metric', persistKey = 'frontEnd' }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right'; unitSystem?: UnitSystem; persistKey?: string } = $props();
 
 	// Mirror transform for left-side view
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -96,8 +97,40 @@
 		};
 	});
 
+	let povSnaps: Record<string, CamSnap> = {};
+	let camHydrated = false;
+
+	function currentSnap(): CamSnap {
+		return { panX, panY, zoom, freeX, freeY, freeViewW, freeViewH };
+	}
+	function applySnap(s: CamSnap) {
+		panX = s.panX; panY = s.panY; zoom = s.zoom;
+		freeX = s.freeX; freeY = s.freeY; freeViewW = s.freeViewW; freeViewH = s.freeViewH;
+	}
+	function persistCam() {
+		povSnaps[povFocus] = currentSnap();
+		setViewCam(persistKey, { pov: povFocus, snap: currentSnap(), perPov: povSnaps });
+	}
+
+	$effect(() => {
+		if (camHydrated) return;
+		camHydrated = true;
+		const saved = getViewCam(persistKey);
+		if (!saved) return;
+		povSnaps = saved.perPov ?? {};
+		if (saved.pov) povFocus = saved.pov as PovOption;
+		applySnap(saved.snap ?? emptySnap());
+	});
+
+	$effect(() => {
+		return () => persistCam();
+	});
+
 	function selectPov(opt: PovOption) {
-		if (opt === 'free') {
+		povSnaps[povFocus] = currentSnap();
+		if (povSnaps[opt]) {
+			applySnap(povSnaps[opt]);
+		} else if (opt === 'free') {
 			freeX = lookAt.x;
 			freeY = lookAt.y;
 			freeViewW = bounds.width / Math.max(0.1, zoom);
@@ -107,6 +140,7 @@
 		}
 		povFocus = opt;
 		povMenuOpen = false;
+		persistCam();
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -139,6 +173,7 @@
 
 	function onPointerUp() {
 		isPanning = false;
+		persistCam();
 	}
 
 	function onWheel(e: WheelEvent) {
@@ -154,6 +189,7 @@
 		} else {
 			zoom = Math.max(0.1, Math.min(20, zoom * factor));
 		}
+		persistCam();
 	}
 
 	// Scale-independent sizes
@@ -869,6 +905,8 @@
 	class:cursor-grabbing={isPanning}
 	class:cursor-grab={!isPanning}
 	xmlns="http://www.w3.org/2000/svg"
+	role="img"
+	aria-label="Front end geometry side view"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}

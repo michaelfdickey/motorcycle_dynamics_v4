@@ -1,7 +1,13 @@
 <script lang="ts">
 	import GeometryLayoutEditor from '$lib/components/frame/GeometryLayoutEditor.svelte';
+	import { browser } from '$app/environment';
+	import { getViewUi, setViewUi } from '$lib/viewCamera';
 
-	let activeTab = $state(0);
+	let activeTab = $state(browser ? (getViewUi('frame')?.activeTab ?? 0) : 0);
+	$effect(() => {
+		if (!browser) return;
+		setViewUi('frame', { activeTab });
+	});
 
 	const models = [
 		{
@@ -751,15 +757,15 @@
 	const active = $derived(models[activeTab]);
 </script>
 
-<div class="space-y-3">
-	<h2 class="text-lg font-bold">Frame</h2>
+<div class="flex flex-col min-h-0 flex-1 gap-2">
+	<h2 class="shrink-0 text-2xl font-bold whitespace-nowrap">Frame</h2>
 
 	<!-- Sub-tabs: 0 is the editor; 1–10 remain notes only -->
-	<div class="flex flex-nowrap gap-1 border-b border-gray-800 pb-1 overflow-x-auto">
+	<div class="shrink-0 flex flex-nowrap gap-1 border-b border-gray-800 pb-1 overflow-x-auto">
 		{#each models as m}
 			<button
 				type="button"
-				class="px-2 py-1 text-[11px] font-medium rounded-t-md transition-colors whitespace-nowrap
+				class="px-3 py-1.5 text-sm font-medium rounded-t-md transition-colors whitespace-nowrap
 					{activeTab === m.id
 						? 'bg-gray-800 text-orange-400 border-t border-x border-orange-500/40'
 						: 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/50'}"
@@ -772,7 +778,9 @@
 
 	<!-- Active model detail -->
 	{#if activeTab === 0}
+		<div class="flex-1 min-h-0 flex flex-col">
 		<GeometryLayoutEditor />
+		</div>
 		<details class="rounded-lg border border-gray-800 bg-gray-900 mt-1">
 			<summary class="cursor-pointer select-none px-3 py-1.5 text-[11px] text-gray-500 hover:text-gray-300">
 				Geometry layout notes
@@ -786,7 +794,7 @@
 			</div>
 		</details>
 	{:else}
-	<div class="rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6">
+	<div class="flex-1 min-h-0 overflow-y-auto rounded-lg border border-gray-800 bg-gray-900 p-6 space-y-6">
 		<!-- Header -->
 		<div>
 			<h3 class="text-lg font-semibold text-gray-100">{active.title}</h3>

@@ -69,6 +69,21 @@
 			maxX = Math.max(maxX, n.x);
 			maxY = Math.max(maxY, n.y);
 		}
+		if (bike.front) {
+			const v = bike.front.visual;
+			const ox = bike.front.ox;
+			const oy = bike.front.oy;
+			const pts = [
+				...v.scCorners, ...v.topTtCorners, ...v.bottomTtCorners,
+				...v.solidForkCorners, ...v.stanchionCorners, ...v.sliderCorners,
+				v.spindle, v.forkCapCenter, v.suspMount, v.suspUpperMount, v.scCenter,
+			];
+			for (const p of pts) {
+				minX = Math.min(minX, p.x + ox);
+				maxX = Math.max(maxX, p.x + ox);
+				maxY = Math.max(maxY, p.y + oy);
+			}
+		}
 		return { minX, maxX, maxY, width: Math.max(400, maxX - minX), height: Math.max(400, maxY) };
 	});
 
@@ -126,18 +141,11 @@
 		return pts.map((p) => `${p.x},${p.y}`).join(' ');
 	}
 
-	function saRect(cx: number, cy: number, rakeDeg: number, halfH: number, halfW: number, ox: number, oy: number): Pt[] {
-		const rake = (rakeDeg * Math.PI) / 180;
-		const dirX = -Math.sin(rake);
-		const dirY = Math.cos(rake);
-		const perpX = dirY;
-		const perpY = -dirX;
-		return [
-			{ x: cx + ox + halfH * dirX + halfW * perpX, y: cy + oy + halfH * dirY + halfW * perpY },
-			{ x: cx + ox + halfH * dirX - halfW * perpX, y: cy + oy + halfH * dirY - halfW * perpY },
-			{ x: cx + ox - halfH * dirX - halfW * perpX, y: cy + oy - halfH * dirY - halfW * perpY },
-			{ x: cx + ox - halfH * dirX + halfW * perpX, y: cy + oy - halfH * dirY + halfW * perpY },
-		];
+	function feSprung(p: Pt): { x: number; y: number } {
+		return pitched(fe(p));
+	}
+	function feUnsprung(p: Pt): { x: number; y: number } {
+		return toSvg(fe(p));
 	}
 
 	const roadMarkers = $derived.by(() => {
@@ -246,30 +254,67 @@
 		<polygon points="{a.x},{a.y} {b.x},{b.y} {c.x},{c.y}" fill="none" stroke="#6b7280" stroke-width="2" />
 	{/if}
 
-	<!-- Front end chassis (steering column / triples) pitched; fork to unsprung axle -->
+	<!-- Front end: same drawing as the Front End design tool, in world space -->
 	{#if bike.front}
-		{@const fr = bike.front.results}
-		{@const rake = bike.front.rakeDeg}
-		{@const sc = fe(fr.steeringColumnCenter)}
-		{@const saG = fe(fr.steeringAxisGround)}
-		{@const saT = fe(fr.steeringAxisTop)}
-		{@const ft = fe(fr.forkTop)}
-		{@const pSaG = pitched(saG)}
-		{@const pSaT = pitched(saT)}
-		{@const pFt = pitched(ft)}
-		{@const col = saRect(fr.steeringColumnCenter.x, fr.steeringColumnCenter.y, rake, bike.front.scHeightMm / 2, 25, bike.front.ox, bike.front.oy).map(pitched)}
-		<line x1={pSaG.x} y1={pSaG.y} x2={pSaT.x} y2={pSaT.y} stroke="#60a5fa" stroke-width="1" stroke-dasharray="7,4" opacity="0.55" />
-		<polygon points={poly(col)} fill="none" stroke="#f97316" stroke-width="2" />
-		<line x1={pFt.x} y1={pFt.y} x2={frontAxleS.x} y2={frontAxleS.y}
-			stroke="#f97316" stroke-width={Math.max(2.5, bike.front.tubeDiaMm * scale * 0.55)} opacity="0.45" stroke-linecap="round" />
-		<line x1={pFt.x} y1={pFt.y} x2={frontAxleS.x} y2={frontAxleS.y} stroke="#f97316" stroke-width="1.5" />
-		{#if fr.linkPivot && fr.linkEnd}
-			{@const lp = pitched(fe(fr.linkPivot))}
-			<line x1={lp.x} y1={lp.y} x2={frontAxleS.x} y2={frontAxleS.y} stroke="#f97316" stroke-width="3" />
-			<circle cx={lp.x} cy={lp.y} r="3.5" fill="#f97316" />
+		{@const vis = bike.front.visual}
+		{@const sw = Math.max(0.9, 1.6 * scale)}
+		{@const saA = feSprung(vis.saLine.p1)}
+		{@const saB = feSprung(vis.saLine.p2)}
+		{@const foA = feSprung(vis.forkOffsetLine.p1)}
+		{@const foB = feSprung(vis.forkOffsetLine.p2)}
+		{@const cap = feSprung(vis.forkCapCenter)}
+		{@const spindle = feUnsprung(vis.spindle)}
+		{@const sc = feSprung(vis.scCenter)}
+		<line x1={saA.x} y1={saA.y} x2={saB.x} y2={saB.y} stroke="#facc15" stroke-width={sw} stroke-dasharray="8,4" opacity="0.85" />
+		{#if vis.isLink}
+			<polygon points={poly(vis.solidForkCorners.map(feSprung))} fill="#4a5568" stroke="#9ca3af" stroke-width={sw} />
+		{:else}
+			<polygon points={poly(vis.sliderCorners.map(feSprung))} fill="#2d3748" stroke="#6b7280" stroke-width={sw} />
+			<polygon points={poly(vis.stanchionCorners.map(feSprung))} fill="#4a5568" stroke="#9ca3af" stroke-width={sw} />
 		{/if}
-		{@const pSc = pitched(sc)}
-		<circle cx={pSc.x} cy={pSc.y} r="4" fill="#f97316" stroke="#fff" stroke-width="0.8" />
+		<line x1={foA.x} y1={foA.y} x2={foB.x} y2={foB.y} stroke="#3b82f6" stroke-width={sw} stroke-dasharray="8,4" opacity="0.8" />
+		<polygon points={poly(vis.scCorners.map(feSprung))} fill="#4b5563" stroke="#9ca3af" stroke-width={sw} />
+		<polygon points={poly(vis.topTtCorners.map(feSprung))} fill="#374151" stroke="#9ca3af" stroke-width={sw} />
+		<polygon points={poly(vis.bottomTtCorners.map(feSprung))} fill="#374151" stroke="#9ca3af" stroke-width={sw} />
+		{@const capL = vis.forkCapLines}
+		{@const tl = feSprung(capL.topLeft)}
+		{@const tr = feSprung(capL.topRight)}
+		{@const bl = feSprung(capL.botLeft)}
+		{@const br = feSprung(capL.botRight)}
+		<line x1={tl.x} y1={tl.y} x2={bl.x} y2={bl.y} stroke="#c4b5d4" stroke-width={sw} />
+		<line x1={tr.x} y1={tr.y} x2={br.x} y2={br.y} stroke="#c4b5d4" stroke-width={sw} />
+		<circle cx={cap.x} cy={cap.y} r={vis.forkCapR * scale} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+		{#each vis.tangents as seg}
+			{@const a = feSprung(seg.p1)}
+			{@const b = vis.isLink ? feUnsprung(seg.p2) : feSprung(seg.p2)}
+			<line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#c4b5d4" stroke-width={sw} />
+		{/each}
+		<circle cx={spindle.x} cy={spindle.y} r={vis.spindleOuterR * scale} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+		<circle cx={spindle.x} cy={spindle.y} r={vis.spindleInnerR * scale} fill="none" stroke="#d8cce5" stroke-width={sw} />
+		<circle cx={spindle.x} cy={spindle.y} r={Math.max(1.4, 2.2 * scale)} fill="#d8cce5" />
+		{#if vis.isLink}
+			{@const up = feSprung(vis.suspUpperMount)}
+			{@const lo = feUnsprung(vis.suspMount)}
+			<line x1={up.x} y1={up.y} x2={lo.x} y2={lo.y} stroke="#fdba74" stroke-width={sw} stroke-dasharray="4,4" />
+			<polygon points={poly(vis.shockUpperCorners.map(feSprung))} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+			<polygon points={poly(vis.shockLowerCorners.map(feUnsprung))} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+			<circle cx={lo.x} cy={lo.y} r={vis.spindleOuterR * scale} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+			<circle cx={lo.x} cy={lo.y} r={vis.spindleInnerR * scale} fill="none" stroke="#d8cce5" stroke-width={sw} />
+			<circle cx={lo.x} cy={lo.y} r={Math.max(1.4, 2.2 * scale)} fill="#d8cce5" />
+			<circle cx={up.x} cy={up.y} r={vis.spindleOuterR * scale} fill="none" stroke="#c4b5d4" stroke-width={sw} />
+			<circle cx={up.x} cy={up.y} r={vis.spindleInnerR * scale} fill="none" stroke="#d8cce5" stroke-width={sw} />
+			<circle cx={up.x} cy={up.y} r={Math.max(1.4, 2.2 * scale)} fill="#d8cce5" />
+			{@const ut = vis.upperTangent}
+			{@const utA = feSprung(ut.p1)}
+			{@const utB = feSprung(ut.p2)}
+			<line x1={utA.x} y1={utA.y} x2={utB.x} y2={utB.y} stroke="#c4b5d4" stroke-width={sw} />
+			{#if vis.upperTtTangent}
+				{@const ttA = feSprung(vis.upperTtTangent.p1)}
+				{@const ttB = feSprung(vis.upperTtTangent.p2)}
+				<line x1={ttA.x} y1={ttA.y} x2={ttB.x} y2={ttB.y} stroke="#c4b5d4" stroke-width={sw} />
+			{/if}
+		{/if}
+		<circle cx={sc.x} cy={sc.y} r={Math.max(2.5, 4 * scale)} fill="#f97316" />
 	{:else}
 		{@const top = pitched({ x: bike.frontAxle.x, y: bike.frontAxle.y + 220 })}
 		<line x1={frontAxleS.x} y1={frontAxleS.y} x2={top.x} y2={top.y} stroke="#f97316" stroke-width="3" />

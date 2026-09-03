@@ -5,6 +5,7 @@
  */
 
 import { computeFrontEnd, type FrontEndInputs, type FrontEndResults, type SuspensionType } from './frontEndGeometry';
+import { buildFrontEndVisual, visualParamsFromDesign, type FrontEndVisual } from './frontEndVisual';
 import { computeRearEnd, type RearEndInputs, type RearEndResults, type RearSuspensionType, type ShockAction } from './rearEndGeometry';
 import { parseTireDesignation, computeTireDimensions, type TireDimensions } from './tire';
 import type { VehicleDesign } from './vehicleStore';
@@ -54,6 +55,7 @@ export interface AssembledBike {
 		forkOffsetMm: number;
 		scHeightMm: number;
 		tubeDiaMm: number;
+		visual: FrontEndVisual;
 	};
 	rear?: {
 		results: RearEndResults;
@@ -181,12 +183,14 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 	let rearResults: RearEndResults | undefined;
 	let frontData: Record<string, unknown> | undefined;
 	let rearData: Record<string, unknown> | undefined;
+	let frontVisual: FrontEndVisual | undefined;
 
 	if (design?.frontEnd) {
 		frontData = design.frontEnd as Record<string, unknown>;
 		frontTire = tireFrom(frontData.tireDesignation, '120/70ZR17');
 		try {
 			frontResults = computeFrontEnd(frontInputsFromDesign(frontData, rakeFallback), frontTire);
+			frontVisual = buildFrontEndVisual(visualParamsFromDesign(frontData, frontResults));
 			if (frontAnchor) {
 				frontOx = frontAnchor.x - frontResults.steeringColumnCenter.x;
 				frontOy = frontAnchor.y - frontResults.steeringColumnCenter.y;
@@ -196,6 +200,7 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 			}
 		} catch {
 			frontResults = undefined;
+			frontVisual = undefined;
 		}
 	}
 
@@ -216,18 +221,24 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 		}
 	}
 
-	let frontContact = frontResults ? add(frontResults.contactPatch, frontOx, frontOy) : { x: envelopeWb, y: 0 };
-	let rearContact = rearResults ? add(rearResults.contactPatch, rearOx, rearOy) : { x: 0, y: 0 };
-	let frontAxle = frontResults ? add(frontResults.axleCenter, frontOx, frontOy) : { x: envelopeWb, y: frontTire.outerRadiusMm };
+	// Use the visual spindle (leading-link / trail offset) as the front axle,
+	// not the simplified contact-patch axle from computeFrontEnd.
+	let frontAxle = frontVisual
+		? add(frontVisual.spindle, frontOx, frontOy)
+		: frontResults
+			? add(frontResults.axleCenter, frontOx, frontOy)
+			: { x: envelopeWb, y: frontTire.outerRadiusMm };
 	let rearAxle = rearResults ? add(rearResults.axleCenter, rearOx, rearOy) : { x: 0, y: rearTire.outerRadiusMm };
+	let frontContact = { x: frontAxle.x, y: frontAxle.y - frontTire.outerRadiusMm };
+	let rearContact = rearResults
+		? add(rearResults.contactPatch, rearOx, rearOy)
+		: { x: rearAxle.x, y: rearAxle.y - rearTire.outerRadiusMm };
 
-	// Seat the rear contact on the ground, then put both tires on the road.
-	const vShift = -rearContact.y;
+	// Keep front-end / rear-end / frame rigid. Seat the lower tire on the road.
+	const vShift = -Math.min(frontContact.y, rearContact.y);
 	if (vShift !== 0) {
 		for (const n of nodes) n.y += vShift;
-		frontOx += 0;
 		frontOy += vShift;
-		rearOx += 0;
 		rearOy += vShift;
 		frontContact = { x: frontContact.x, y: frontContact.y + vShift };
 		rearContact = { x: rearContact.x, y: rearContact.y + vShift };
@@ -235,14 +246,9 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 		rearAxle = { x: rearAxle.x, y: rearAxle.y + vShift };
 	}
 
-	frontContact = { x: frontAxle.x, y: 0 };
-	rearContact = { x: rearAxle.x, y: 0 };
-	frontAxle = { x: frontAxle.x, y: frontTire.outerRadiusMm };
-	rearAxle = { x: rearAxle.x, y: rearTire.outerRadiusMm };
-
 	const wheelbaseMm = Math.max(200, Math.abs(frontContact.x - rearContact.x));
 	const rearX = Math.min(frontContact.x, rearContact.x);
-	const frontX = rearX + wheelbaseMm;
+	const frontX = Math.max(frontContact.x, rearContact.x);
 	const cogX = rearX + wheelbaseMm * (1 - vehicle.cogPositionPct / 100);
 	const cog: Pt = { x: cogX, y: vehicle.cogHeightMm };
 
@@ -253,26 +259,25 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 		wheelbaseMm,
 		frontTire,
 		rearTire,
-		frontAxle: { x: frontX, y: frontTire.outerRadiusMm },
-		rearAxle: { x: rearX, y: rearTire.outerRadiusMm },
-		frontContact: { x: frontX, y: 0 },
-		rearContact: { x: rearX, y: 0 },
-		cog: { x: cogX, y: vehicle.cogHeightMm },
+		frontAxle,
+		rearAxle,
+		frontContact,
+		rearContact,
+		cog,
 		nodes,
 		members,
 		nodeById,
 	};
 
-	// If contacts were not ordered (front x < rear x), keep assembled axle x as-is.
-	if (frontContact.x >= rearContact.x) {
-		bike.frontAxle = { x: frontContact.x, y: frontTire.outerRadiusMm };
-		bike.rearAxle = { x: rearContact.x, y: rearTire.outerRadiusMm };
-		bike.frontContact = { x: frontContact.x, y: 0 };
-		bike.rearContact = { x: rearContact.x, y: 0 };
-		bike.cog = cog;
+	if (frontContact.x < rearContact.x) {
+		bike.frontAxle = { x: frontX, y: frontAxle.y };
+		bike.rearAxle = { x: rearX, y: rearAxle.y };
+		bike.frontContact = { x: frontX, y: frontContact.y };
+		bike.rearContact = { x: rearX, y: rearContact.y };
+		bike.cog = { x: cogX, y: vehicle.cogHeightMm };
 	}
 
-	if (frontResults && frontData) {
+	if (frontResults && frontData && frontVisual) {
 		bike.front = {
 			results: frontResults,
 			data: frontData,
@@ -282,6 +287,7 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 			forkOffsetMm: num(frontData.forkOffsetMm, 40),
 			scHeightMm: num(frontData.steeringColumnHeightMm, 200),
 			tubeDiaMm: forkTubeDiaMm(frontData.forkTubeSize),
+			visual: frontVisual,
 		};
 	}
 	if (rearResults && rearData) {

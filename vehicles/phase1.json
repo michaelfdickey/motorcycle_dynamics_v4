@@ -1,7 +1,7 @@
 {
   "name": "phase1",
   "version": 1,
-  "savedAt": "2026-09-02T06:09:40.115Z",
+  "savedAt": "2026-09-03T00:03:04.507Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 279.4,
@@ -564,5 +564,60 @@
     "rearSprocketRadiusMm": 110,
     "frontSprocketRadiusMm": 38,
     "swingarmSectionMm": 55
+  },
+  "suspension": {
+    "bikeMassKg": 680.3885555705675,
+    "riderMassKg": 113.39809259509458,
+    "cargoMassKg": 0,
+    "frontWeightPct": 50,
+    "unsprungFrontKg": 16,
+    "unsprungRearKg": 20,
+    "showPose": "rider",
+    "front": {
+      "springKind": "coil_progressive",
+      "damperArch": "cartridge",
+      "unitCount": 1,
+      "rateNPerMm": 196.13299999999998,
+      "rate2NPerMm": 2.4516625,
+      "crossoverMm": 40,
+      "preloadMm": 8,
+      "threadPitchMm": 1.5,
+      "airPressureBar": 9,
+      "airCanVolumeCc": 180,
+      "oilWeight": "10",
+      "oilLevelMm": 120,
+      "clickRange": 20,
+      "compressionClicks": 12,
+      "reboundClicks": 10,
+      "hscClicks": 10,
+      "hsrClicks": 10,
+      "nitrogenBar": 10,
+      "includeAirAssist": false,
+      "targetRiderSagPct": 30,
+      "targetStaticSagPct": 8
+    },
+    "rear": {
+      "springKind": "coil_linear",
+      "damperArch": "piggyback",
+      "unitCount": 1,
+      "rateNPerMm": 117.6798,
+      "rate2NPerMm": 39.2266,
+      "crossoverMm": 25,
+      "preloadMm": 6,
+      "threadPitchMm": 1.5,
+      "airPressureBar": 10,
+      "airCanVolumeCc": 220,
+      "oilWeight": "10",
+      "oilLevelMm": 0,
+      "clickRange": 20,
+      "compressionClicks": 12,
+      "reboundClicks": 10,
+      "hscClicks": 10,
+      "hsrClicks": 10,
+      "nitrogenBar": 12,
+      "includeAirAssist": false,
+      "targetRiderSagPct": 28,
+      "targetStaticSagPct": 8
+    }
   }
 }

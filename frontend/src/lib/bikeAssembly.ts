@@ -1,7 +1,10 @@
 /**
  * Assemble frame + front end + rear end into one world-space side view.
- * Coordinates: +x forward, +y up, mm. Rear contact is translated onto y = 0;
- * both tires are then seated on the ground for the road simulation.
+ * Coordinates: +x forward, +y up, mm.
+ *
+ * Modules stay rigid (frame, front end, rear end). After they are joined at
+ * the anchors, the whole assembly is rotated and translated so both tires
+ * sit on y = 0 — the bike pitches until the floating wheel lands.
  */
 
 import { computeFrontEnd, type FrontEndInputs, type FrontEndResults, type SuspensionType } from './frontEndGeometry';
@@ -31,6 +34,30 @@ export interface FrameMember {
 	label: string;
 }
 
+/** Rigid pose that seats both tires on the ground. */
+export interface GroundSit {
+	pivot: Pt;
+	theta: number;
+	shift: Pt;
+}
+
+export const identitySit: GroundSit = { pivot: { x: 0, y: 0 }, theta: 0, shift: { x: 0, y: 0 } };
+
+export function applySit(sit: GroundSit | undefined, p: Pt): Pt {
+	if (!sit) return p;
+	let x = p.x;
+	let y = p.y;
+	if (sit.theta !== 0) {
+		const c = Math.cos(sit.theta);
+		const s = Math.sin(sit.theta);
+		const dx = p.x - sit.pivot.x;
+		const dy = p.y - sit.pivot.y;
+		x = sit.pivot.x + dx * c - dy * s;
+		y = sit.pivot.y + dx * s + dy * c;
+	}
+	return { x: x + sit.shift.x, y: y + sit.shift.y };
+}
+
 export interface AssembledBike {
 	hasFrame: boolean;
 	hasFront: boolean;
@@ -43,6 +70,7 @@ export interface AssembledBike {
 	frontContact: Pt;
 	rearContact: Pt;
 	cog: Pt;
+	sit: GroundSit;
 	nodes: FrameNode[];
 	members: FrameMember[];
 	nodeById: Record<string, FrameNode>;
@@ -234,21 +262,38 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 		? add(rearResults.contactPatch, rearOx, rearOy)
 		: { x: rearAxle.x, y: rearAxle.y - rearTire.outerRadiusMm };
 
-	// Keep front-end / rear-end / frame rigid. Seat the lower tire on the road.
-	const vShift = -Math.min(frontContact.y, rearContact.y);
-	if (vShift !== 0) {
-		for (const n of nodes) n.y += vShift;
-		frontOy += vShift;
-		rearOy += vShift;
-		frontContact = { x: frontContact.x, y: frontContact.y + vShift };
-		rearContact = { x: rearContact.x, y: rearContact.y + vShift };
-		frontAxle = { x: frontAxle.x, y: frontAxle.y + vShift };
-		rearAxle = { x: rearAxle.x, y: rearAxle.y + vShift };
+	// Pitch the joined rigid assembly so both tires are tangent to y = 0.
+	// Rotate about the rear axle until the axle-to-axle vector has the rise
+	// that puts each hub at its tire radius, then drop onto the road.
+	const Rf = frontTire.outerRadiusMm;
+	const Rr = rearTire.outerRadiusMm;
+	const axleDx = frontAxle.x - rearAxle.x;
+	const axleDy = frontAxle.y - rearAxle.y;
+	const axleDist = Math.hypot(axleDx, axleDy);
+	let sit: GroundSit = { pivot: { x: rearAxle.x, y: rearAxle.y }, theta: 0, shift: { x: 0, y: 0 } };
+	if (axleDist > 1) {
+		const rise = Math.max(-axleDist + 0.5, Math.min(axleDist - 0.5, Rf - Rr));
+		const span = Math.sqrt(Math.max(0, axleDist * axleDist - rise * rise));
+		const dir = axleDx >= 0 ? 1 : -1;
+		const desired = Math.atan2(rise, dir * span);
+		const current = Math.atan2(axleDy, axleDx);
+		sit.theta = desired - current;
 	}
+	const rearAfter = applySit({ ...sit, shift: { x: 0, y: 0 } }, rearAxle);
+	sit.shift = { x: 0, y: Rr - rearAfter.y };
+
+	for (const n of nodes) {
+		const p = applySit(sit, n);
+		n.x = p.x;
+		n.y = p.y;
+	}
+	frontAxle = applySit(sit, frontAxle);
+	rearAxle = applySit(sit, rearAxle);
+	frontContact = { x: frontAxle.x, y: frontAxle.y - Rf };
+	rearContact = { x: rearAxle.x, y: rearAxle.y - Rr };
 
 	const wheelbaseMm = Math.max(200, Math.abs(frontContact.x - rearContact.x));
 	const rearX = Math.min(frontContact.x, rearContact.x);
-	const frontX = Math.max(frontContact.x, rearContact.x);
 	const cogX = rearX + wheelbaseMm * (1 - vehicle.cogPositionPct / 100);
 	const cog: Pt = { x: cogX, y: vehicle.cogHeightMm };
 
@@ -264,18 +309,11 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 		frontContact,
 		rearContact,
 		cog,
+		sit,
 		nodes,
 		members,
 		nodeById,
 	};
-
-	if (frontContact.x < rearContact.x) {
-		bike.frontAxle = { x: frontX, y: frontAxle.y };
-		bike.rearAxle = { x: rearX, y: rearAxle.y };
-		bike.frontContact = { x: frontX, y: frontContact.y };
-		bike.rearContact = { x: rearX, y: rearContact.y };
-		bike.cog = { x: cogX, y: vehicle.cogHeightMm };
-	}
 
 	if (frontResults && frontData && frontVisual) {
 		bike.front = {

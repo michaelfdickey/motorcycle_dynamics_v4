@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AssembledBike, Pt } from '$lib/bikeAssembly';
+	import { applySit, type AssembledBike, type Pt } from '$lib/bikeAssembly';
 	import type { BrakeParams, BrakingResults, VehicleParams } from '$lib/braking';
 	import { totalPotCount } from '$lib/braking';
 
@@ -79,9 +79,10 @@
 				v.spindle, v.forkCapCenter, v.suspMount, v.suspUpperMount, v.scCenter,
 			];
 			for (const p of pts) {
-				minX = Math.min(minX, p.x + ox);
-				maxX = Math.max(maxX, p.x + ox);
-				maxY = Math.max(maxY, p.y + oy);
+				const w = applySit(bike.sit, { x: p.x + ox, y: p.y + oy });
+				minX = Math.min(minX, w.x);
+				maxX = Math.max(maxX, w.x);
+				maxY = Math.max(maxY, w.y);
 			}
 		}
 		return { minX, maxX, maxY, width: Math.max(400, maxX - minX), height: Math.max(400, maxY) };
@@ -158,11 +159,11 @@
 
 	function fe(p: Pt): Pt {
 		if (!bike.front) return p;
-		return { x: p.x + bike.front.ox, y: p.y + bike.front.oy };
+		return applySit(bike.sit, { x: p.x + bike.front.ox, y: p.y + bike.front.oy });
 	}
 	function re(p: Pt): Pt {
 		if (!bike.rear) return p;
-		return { x: p.x + bike.rear.ox, y: p.y + bike.rear.oy };
+		return applySit(bike.sit, { x: p.x + bike.rear.ox, y: p.y + bike.rear.oy });
 	}
 
 	const cogP = $derived(pitched(bike.cog));

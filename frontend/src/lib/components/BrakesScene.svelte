@@ -85,6 +85,22 @@
 				maxY = Math.max(maxY, w.y);
 			}
 		}
+		if (bike.rear) {
+			const rr = bike.rear.results;
+			const ox = bike.rear.ox;
+			const oy = bike.rear.oy;
+			const pts = [
+				rr.pivot, rr.axleCenter, rr.shockLower, rr.shockUpper, rr.countershaft,
+				...(rr.apex ? [rr.apex] : []),
+				...(rr.axleArc ?? []),
+			];
+			for (const p of pts) {
+				const w = applySit(bike.sit, { x: p.x + ox, y: p.y + oy });
+				minX = Math.min(minX, w.x);
+				maxX = Math.max(maxX, w.x);
+				maxY = Math.max(maxY, w.y);
+			}
+		}
 		return { minX, maxX, maxY, width: Math.max(400, maxX - minX), height: Math.max(400, maxY) };
 	});
 
@@ -140,6 +156,19 @@
 
 	function poly(pts: { x: number; y: number }[]): string {
 		return pts.map((p) => `${p.x},${p.y}`).join(' ');
+	}
+
+	function capsuleSvg(a: { x: number; y: number }, b: { x: number; y: number }, width: number) {
+		const dx = b.x - a.x, dy = b.y - a.y;
+		const len = Math.hypot(dx, dy) || 1;
+		const px = (-dy / len) * (width / 2);
+		const py = (dx / len) * (width / 2);
+		return [
+			{ x: a.x + px, y: a.y + py },
+			{ x: a.x - px, y: a.y - py },
+			{ x: b.x - px, y: b.y - py },
+			{ x: b.x + px, y: b.y + py },
+		];
 	}
 
 	function feSprung(p: Pt): { x: number; y: number } {
@@ -321,38 +350,72 @@
 		<line x1={frontAxleS.x} y1={frontAxleS.y} x2={top.x} y2={top.y} stroke="#f97316" stroke-width="3" />
 	{/if}
 
-	<!-- Rear end: swingarm / shock from pitched pivot to unsprung axle -->
+	<!-- Rear end: same beams, travel arc, and shock as the Rear End design tool -->
 	{#if bike.rear}
 		{@const rr = bike.rear.results}
+		{@const type = bike.rear.suspensionType}
+		{@const sw = Math.max(0.9, 1.6 * scale)}
+		{@const section = Math.max(4, bike.rear.swingarmSectionMm * scale)}
+		{@const stayW = section * 0.5}
+		{@const shockDia = 50 * scale}
 		{@const pivot = pitched(re(rr.pivot))}
-		{@const section = Math.max(2, bike.rear.swingarmSectionMm * scale * 0.35)}
-		<line x1={pivot.x} y1={pivot.y} x2={rearAxleS.x} y2={rearAxleS.y}
-			stroke="#22d3ee" stroke-width={section} stroke-linecap="round" opacity="0.9" />
+		{@const axle = rearAxleS}
+		{@const lo = toSvg(re(rr.shockLower))}
+		{@const up = pitched(re(rr.shockUpper))}
+		{@const sdx = up.x - lo.x}
+		{@const sdy = up.y - lo.y}
+		{@const slen = Math.hypot(sdx, sdy) || 1}
+		{@const sux = sdx / slen}
+		{@const suy = sdy / slen}
+		{@const bodyLen = Math.max(12, slen * 0.55)}
+		{@const bodyEnd = { x: lo.x + sux * bodyLen, y: lo.y + suy * bodyLen }}
+		{@const shaftStart = { x: lo.x + sux * bodyLen * 0.7, y: lo.y + suy * bodyLen * 0.7 }}
+		{#if rr.axleArc && rr.axleArc.length > 1 && type !== 'hardtail'}
+			<polyline
+				points={rr.axleArc.map((p) => { const s = pitched(re(p)); return `${s.x},${s.y}`; }).join(' ')}
+				fill="none" stroke="#22c55e" stroke-width={sw} stroke-dasharray="5,4" opacity="0.75"
+			/>
+		{/if}
+		{#if rr.chainUpper && rr.chainLower}
+			{@const cu1 = pitched(re(rr.chainUpper.p1))}
+			{@const cu2 = pitched(re(rr.chainUpper.p2))}
+			{@const cl1 = toSvg(re(rr.chainLower.p1))}
+			{@const cl2 = toSvg(re(rr.chainLower.p2))}
+			<line x1={cu1.x} y1={cu1.y} x2={cu2.x} y2={cu2.y} stroke="#a8a29e" stroke-width={sw} opacity="0.7" />
+			<line x1={cl1.x} y1={cl1.y} x2={cl2.x} y2={cl2.y} stroke="#a8a29e" stroke-width={sw} opacity="0.7" />
+		{/if}
+		{#if type === 'hardtail' || type === 'softail'}
+			<line x1={pivot.x} y1={pivot.y} x2={axle.x} y2={axle.y}
+				stroke="#9ca3af" stroke-width={section * 0.35} stroke-linecap="round" opacity={type === 'softail' ? 0.55 : 0.9} />
+		{/if}
+		{#if type !== 'hardtail'}
+			<polygon points={poly(capsuleSvg(axle, pivot, section))} fill="#374151" stroke="#9ca3af" stroke-width={sw} />
+		{/if}
 		{#if rr.apex}
 			{@const ap = pitched(re(rr.apex))}
-			<line x1={rearAxleS.x} y1={rearAxleS.y} x2={ap.x} y2={ap.y} stroke="#22d3ee" stroke-width={section * 0.55} />
-			<line x1={pivot.x} y1={pivot.y} x2={ap.x} y2={ap.y} stroke="#22d3ee" stroke-width={section * 0.55} />
-			<circle cx={ap.x} cy={ap.y} r="3" fill="#22d3ee" />
-		{/if}
-		{#if bike.rear.suspensionType !== 'hardtail'}
-			{@const up = pitched(re(rr.shockUpper))}
-			{@const lo = toSvg(re(rr.shockLower))}
-			<line x1={lo.x} y1={lo.y} x2={up.x} y2={up.y} stroke="#fdba74" stroke-width="2.2" />
-			<circle cx={lo.x} cy={lo.y} r="3" fill="#fdba74" />
-			<circle cx={up.x} cy={up.y} r="3" fill="#fdba74" />
+			<polygon points={poly(capsuleSvg(axle, ap, stayW))} fill="#4b5563" stroke="#9ca3af" stroke-width={sw * 0.7} />
+			<polygon points={poly(capsuleSvg(pivot, ap, stayW))} fill="#4b5563" stroke="#9ca3af" stroke-width={sw * 0.7} />
+			<circle cx={ap.x} cy={ap.y} r={Math.max(2.2, 3.2 * scale)} fill="#f97316" />
 		{/if}
 		{#if rr.rockerPivot && rr.rockerDogbone && rr.rockerShock && rr.dogboneArm}
 			{@const rp = pitched(re(rr.rockerPivot))}
 			{@const rd = pitched(re(rr.rockerDogbone))}
 			{@const rs = pitched(re(rr.rockerShock))}
 			{@const da = toSvg(re(rr.dogboneArm))}
-			<line x1={da.x} y1={da.y} x2={rd.x} y2={rd.y} stroke="#67e8f9" stroke-width="1.6" />
-			<line x1={rd.x} y1={rd.y} x2={rs.x} y2={rs.y} stroke="#c4b5fd" stroke-width="2" />
-			<circle cx={rp.x} cy={rp.y} r="3" fill="#a78bfa" />
+			<line x1={da.x} y1={da.y} x2={rd.x} y2={rd.y} stroke="#67e8f9" stroke-width={sw * 1.3} />
+			<line x1={rd.x} y1={rd.y} x2={rs.x} y2={rs.y} stroke="#c4b5fd" stroke-width={sw * 1.6} />
+			<circle cx={rp.x} cy={rp.y} r={Math.max(2.4, 3.4 * scale)} fill="#a78bfa" stroke="#fff" stroke-width={sw * 0.4} />
+		{/if}
+		{#if type !== 'hardtail'}
+			<polygon points={poly(capsuleSvg(lo, bodyEnd, shockDia))} fill="#4b5563" stroke="#fdba74" stroke-width={sw} />
+			<polygon points={poly(capsuleSvg(shaftStart, up, Math.max(3, shockDia * 0.32)))} fill="none" stroke="#fdba74" stroke-width={sw} />
+			<line x1={lo.x} y1={lo.y} x2={up.x} y2={up.y} stroke="#f97316" stroke-width={sw} stroke-dasharray="5,3" opacity="0.85" />
+			<circle cx={lo.x} cy={lo.y} r={Math.max(2, 2.8 * scale)} fill="#fdba74" />
+			<circle cx={up.x} cy={up.y} r={Math.max(2, 2.8 * scale)} fill="#fdba74" />
 		{/if}
 		{@const cs = pitched(re(rr.countershaft))}
-		<circle cx={cs.x} cy={cs.y} r={Math.max(4, 14 * scale)} fill="none" stroke="#22d3ee" stroke-width="1" opacity="0.6" />
-		<circle cx={pivot.x} cy={pivot.y} r="4.5" fill="#22d3ee" stroke="#fff" stroke-width="0.8" />
+		<circle cx={cs.x} cy={cs.y} r={Math.max(5, 14 * scale)} fill="none" stroke="#a8a29e" stroke-width={sw} opacity="0.8" />
+		<circle cx={pivot.x} cy={pivot.y} r={Math.max(3, 4.5 * scale)} fill="#22d3ee" stroke="#fff" stroke-width="0.8" />
 	{:else}
 		{@const pvt = pitched({ x: bike.rearAxle.x + bike.wheelbaseMm * 0.22, y: bike.rearAxle.y + 80 })}
 		<line x1={pvt.x} y1={pvt.y} x2={rearAxleS.x} y2={rearAxleS.y} stroke="#22d3ee" stroke-width="3" />

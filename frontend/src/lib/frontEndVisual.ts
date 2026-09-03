@@ -434,6 +434,10 @@ export function buildFrontEndVisual(p: FrontEndVisualParams): FrontEndVisual {
 	};
 }
 
+export function shockLengthMm(v: FrontEndVisual): number {
+	return Math.hypot(v.suspUpperMount.x - v.suspMount.x, v.suspUpperMount.y - v.suspMount.y);
+}
+
 export function visualParamsFromDesign(data: Record<string, unknown>, results: FrontEndResults): FrontEndVisualParams {
 	const tube = String(data.forkTubeSize ?? '41/54');
 	const parts = tube.split('/');

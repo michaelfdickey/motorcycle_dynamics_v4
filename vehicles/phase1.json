@@ -1,7 +1,7 @@
 {
   "name": "phase1",
-  "version": 3,
-  "savedAt": "2026-09-03T04:28:13.397Z",
+  "version": 4,
+  "savedAt": "2026-09-03T04:45:50.708Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 279.4,
@@ -577,10 +577,10 @@
       "springKind": "coil_progressive",
       "damperArch": "cartridge",
       "unitCount": 1,
-      "rateNPerMm": 196.13299999999998,
+      "rateNPerMm": 98.06649999999999,
       "rate2NPerMm": 2.4516625,
       "crossoverMm": 40,
-      "preloadMm": 8,
+      "preloadMm": 24,
       "threadPitchMm": 1.5,
       "airPressureBar": 9,
       "airCanVolumeCc": 180,

@@ -58,6 +58,36 @@ export function applySit(sit: GroundSit | undefined, p: Pt): Pt {
 	return { x: x + sit.shift.x, y: y + sit.shift.y };
 }
 
+export function undoSit(sit: GroundSit | undefined, p: Pt): Pt {
+	if (!sit) return p;
+	const q = { x: p.x - sit.shift.x, y: p.y - sit.shift.y };
+	if (sit.theta === 0) return q;
+	const c = Math.cos(-sit.theta);
+	const s = Math.sin(-sit.theta);
+	const dx = q.x - sit.pivot.x;
+	const dy = q.y - sit.pivot.y;
+	return { x: sit.pivot.x + dx * c - dy * s, y: sit.pivot.y + dx * s + dy * c };
+}
+
+/** Rotate/translate a rigid assembly so both tires sit on y = 0. */
+export function computeGroundSit(frontAxle: Pt, rearAxle: Pt, Rf: number, Rr: number): GroundSit {
+	const axleDx = frontAxle.x - rearAxle.x;
+	const axleDy = frontAxle.y - rearAxle.y;
+	const axleDist = Math.hypot(axleDx, axleDy);
+	const sit: GroundSit = { pivot: { x: rearAxle.x, y: rearAxle.y }, theta: 0, shift: { x: 0, y: 0 } };
+	if (axleDist > 1) {
+		const rise = Math.max(-axleDist + 0.5, Math.min(axleDist - 0.5, Rf - Rr));
+		const span = Math.sqrt(Math.max(0, axleDist * axleDist - rise * rise));
+		const dir = axleDx >= 0 ? 1 : -1;
+		const desired = Math.atan2(rise, dir * span);
+		const current = Math.atan2(axleDy, axleDx);
+		sit.theta = desired - current;
+	}
+	const rearAfter = applySit({ ...sit, shift: { x: 0, y: 0 } }, rearAxle);
+	sit.shift = { x: 0, y: Rr - rearAfter.y };
+	return sit;
+}
+
 export interface AssembledBike {
 	hasFrame: boolean;
 	hasFront: boolean;
@@ -267,20 +297,7 @@ export function assembleBike(design: VehicleDesign | null, vehicle: VehicleParam
 	// that puts each hub at its tire radius, then drop onto the road.
 	const Rf = frontTire.outerRadiusMm;
 	const Rr = rearTire.outerRadiusMm;
-	const axleDx = frontAxle.x - rearAxle.x;
-	const axleDy = frontAxle.y - rearAxle.y;
-	const axleDist = Math.hypot(axleDx, axleDy);
-	let sit: GroundSit = { pivot: { x: rearAxle.x, y: rearAxle.y }, theta: 0, shift: { x: 0, y: 0 } };
-	if (axleDist > 1) {
-		const rise = Math.max(-axleDist + 0.5, Math.min(axleDist - 0.5, Rf - Rr));
-		const span = Math.sqrt(Math.max(0, axleDist * axleDist - rise * rise));
-		const dir = axleDx >= 0 ? 1 : -1;
-		const desired = Math.atan2(rise, dir * span);
-		const current = Math.atan2(axleDy, axleDx);
-		sit.theta = desired - current;
-	}
-	const rearAfter = applySit({ ...sit, shift: { x: 0, y: 0 } }, rearAxle);
-	sit.shift = { x: 0, y: Rr - rearAfter.y };
+	const sit = computeGroundSit(frontAxle, rearAxle, Rf, Rr);
 
 	for (const n of nodes) {
 		const p = applySit(sit, n);

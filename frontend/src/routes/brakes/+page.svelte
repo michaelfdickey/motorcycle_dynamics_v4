@@ -20,9 +20,16 @@
 		getLastFileName,
 		type VehicleDesign,
 	} from '$lib/vehicleStore';
-	import { assembleBike, applyAssemblyToVehicle } from '$lib/bikeAssembly';
+	import { assembleBike, applyAssemblyToVehicle, applySit } from '$lib/bikeAssembly';
 	import BrakesScene from '$lib/components/BrakesScene.svelte';
 	import { browser } from '$app/environment';
+	import {
+		computeEnd,
+		mergeDesign,
+		defaultFrontEnd,
+		type EndGeometry,
+	} from '$lib/suspension';
+	import { buildFrontEndVisual, visualParamsFromDesign, shockLengthMm } from '$lib/frontEndVisual';
 
 	// ── Unit conversion helpers ──
 	const MM_PER_INCH = 25.4;
@@ -111,6 +118,60 @@
 	let vehicle = $state<VehicleParams>(defaultVehicleParams());
 	let loadedDesign = $state<VehicleDesign | null>(null);
 	const bike = $derived(assembleBike(loadedDesign, vehicle));
+
+	const dive = $derived.by(() => {
+		if (!bike.front) return null;
+		const data = bike.front.data;
+		const restPct = typeof data.compressionPct === 'number' ? data.compressionPct : 0;
+		const travel = Math.max(8, typeof data.forkTravelMm === 'number' ? data.forkTravelMm : 120);
+		const rake = bike.front.rakeDeg;
+		const telescopic = data.suspensionType === 'telescopic';
+		const params = visualParamsFromDesign(data, bike.front.results);
+		const v0 = buildFrontEndVisual({ ...params, compressionPct: restPct });
+		const v1 = buildFrontEndVisual({ ...params, compressionPct: Math.min(100, restPct + 2) });
+		const ox = bike.front.ox, oy = bike.front.oy;
+		const s0 = applySit(bike.sit, { x: v0.spindle.x + ox, y: v0.spindle.y + oy });
+		const s1 = applySit(bike.sit, { x: v1.spindle.x + ox, y: v1.spindle.y + oy });
+		const dShock = Math.max(0.2, Math.abs(shockLengthMm(v1) - shockLengthMm(v0)));
+		const dVert = Math.max(0.05, Math.abs(s1.y - s0.y));
+		const L = dVert / dShock;
+		const sus = loadedDesign?.suspension ? mergeDesign(loadedDesign.suspension) : null;
+		const cfg = sus?.front ?? defaultFrontEnd();
+		if (telescopic && cfg.unitCount < 2) cfg.unitCount = 2;
+		const geo: EndGeometry = {
+			wheelTravelMm: L * travel,
+			unitTravelMm: travel,
+			leverage: L,
+			rakeDeg: rake,
+			stanchionDiaMm: params.stanchionDiaMm,
+			solid: false,
+			telescopic,
+		};
+		const massKg = vehicle.totalMassKg;
+		const frontFrac = 1 - vehicle.cogPositionPct / 100;
+		const unsprung = sus?.unsprungFrontKg ?? 16;
+		const sprungKg = Math.max(8, massKg * frontFrac - unsprung);
+		const er = computeEnd(cfg, geo, sprungKg, sprungKg, true);
+		return {
+			restPct,
+			travel,
+			restStroke: travel * restPct / 100,
+			L,
+			kWheel: Math.max(0.5, er.wheelRateNPerMm),
+			cComp: Math.max(40, er.compressionDampingNsPerM),
+			cReb: Math.max(40, er.reboundDampingNsPerM),
+			sprungKg,
+			staticFrontN: massKg * 9.81 * frontFrac,
+		};
+	});
+
+	$effect(() => {
+		if (simRunning) return;
+		simFrontPct = dive?.restPct ?? 0;
+		simFrontZMm = 0;
+		simFrontZVel = 0;
+		simFrontBottomed = false;
+	});
 
 	// ── Control Inputs ──
 	let frontLeverForceN = $state(150);
@@ -216,6 +277,12 @@
 	// Pitch animation — eases toward target instead of snapping
 	let simPitchTarget = $state(0);  // target pitch from physics
 	let simPitchVel = $state(0);     // angular velocity for smooth transition
+
+	// Front suspension travel (extra vertical mm from the assembled rest pose)
+	let simFrontZMm = $state(0);
+	let simFrontZVel = $state(0);
+	let simFrontPct = $state(0);
+	let simFrontBottomed = $state(false);
 
 	// Brake mode: 'both' | 'front' | 'rear'
 	let brakeMode = $state<'both' | 'front' | 'rear'>('both');
@@ -340,6 +407,35 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 	// ── Real-time simulation loop ──
 	const G_CONST = 9.81;
 
+	function stepFrontDive(dt: number, extraLoadN: number) {
+		if (!dive) {
+			simFrontPct = 0;
+			simFrontBottomed = false;
+			return;
+		}
+		const zMax = Math.max(0, (dive.travel - dive.restStroke) * dive.L);
+		const zMin = -dive.restStroke * dive.L;
+		const zM = simFrontZMm / 1000;
+		const k = dive.kWheel * 1000;
+		const c = simFrontZVel >= 0 ? dive.cComp : dive.cReb;
+		const a = (extraLoadN - k * zM - c * simFrontZVel) / dive.sprungKg;
+		simFrontZVel += a * dt;
+		simFrontZMm += simFrontZVel * dt * 1000;
+		if (simFrontZMm >= zMax - 0.05) {
+			simFrontZMm = zMax;
+			if (simFrontZVel > 0) simFrontZVel = 0;
+			simFrontBottomed = zMax > 0.5 && extraLoadN > 1;
+		} else if (simFrontZMm <= zMin + 0.05) {
+			simFrontZMm = zMin;
+			if (simFrontZVel < 0) simFrontZVel = 0;
+			simFrontBottomed = false;
+		} else {
+			simFrontBottomed = false;
+		}
+		const extraShock = dive.L > 0.05 ? simFrontZMm / dive.L : simFrontZMm;
+		simFrontPct = Math.min(100, Math.max(0, dive.restPct + (extraShock / dive.travel) * 100));
+	}
+
 	function startSimulation() {
 		simSpeedMs = initialSpeedKph / 3.6;
 		simDistanceM = 0;
@@ -348,6 +444,10 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		simPitchDeg = 0;
 		simPitchTarget = 0;
 		simPitchVel = 0;
+		simFrontZMm = 0;
+		simFrontZVel = 0;
+		simFrontPct = dive?.restPct ?? 0;
+		simFrontBottomed = false;
 		simFrontSlip = false;
 		simRearSlip = false;
 		frontWheelAngleDeg = 0;
@@ -384,21 +484,17 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 
 		if (simSpeedMs <= 0.01) {
 			simSpeedMs = 0;
-			// Keep animating until pitch settles back to 0
-			simPitchTarget = 0;
-			const pitchSettleThreshold = 0.05;
-			if (Math.abs(simPitchDeg) < pitchSettleThreshold && Math.abs(simPitchVel) < pitchSettleThreshold) {
+			stepFrontDive(dt, 0);
+			if (Math.abs(simFrontZMm) < 0.5 && Math.abs(simFrontZVel) < 0.03) {
+				simFrontZMm = 0;
+				simFrontZVel = 0;
+				simFrontPct = dive?.restPct ?? 0;
+				simFrontBottomed = false;
 				simPitchDeg = 0;
 				simPitchVel = 0;
 				simRunning = false;
 				return;
 			}
-			// Still settling — animate pitch only
-			const pitchStiffness = 12;
-			const pitchDamping = 6;
-			const pitchError = simPitchTarget - simPitchDeg;
-			simPitchVel += (pitchStiffness * pitchError - pitchDamping * simPitchVel) * dt;
-			simPitchDeg += simPitchVel * dt;
 			animationId = requestAnimationFrame(tick);
 			return;
 		}
@@ -433,23 +529,15 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			simRearSlip = r.rearBrakeForceN > maxRear;
 			simFrontLoad = frontLoad;
 			simRearLoad = rearLoad;
-
-			// Target pitch angle (physics says it should be here)
-			simPitchTarget = Math.atan2(wt, totalWeight) * (180 / Math.PI);
+			const extraN = dive ? frontLoad - dive.staticFrontN : 0;
+			stepFrontDive(dt, extraN);
 		} else {
 			// Cruising — no brakes, no decel
 			simDecelG = 0;
 			simFrontSlip = false;
 			simRearSlip = false;
-			simPitchTarget = 0;
+			stepFrontDive(dt, 0);
 		}
-
-		// Animate pitch with spring-damper (inertia)
-		const pitchStiffness = 12;  // how quickly it responds (rad/s²-ish)
-		const pitchDamping = 6;     // damping to prevent oscillation
-		const pitchError = simPitchTarget - simPitchDeg;
-		simPitchVel += (pitchStiffness * pitchError - pitchDamping * simPitchVel) * dt;
-		simPitchDeg += simPitchVel * dt;
 
 		// Integrate
 		simSpeedMs = Math.max(0, simSpeedMs - decel * dt);
@@ -503,6 +591,10 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		simPitchDeg = 0;
 		simPitchTarget = 0;
 		simPitchVel = 0;
+		simFrontZMm = 0;
+		simFrontZVel = 0;
+		simFrontPct = dive?.restPct ?? 0;
+		simFrontBottomed = false;
 		peakDecelG = 0;
 		brakingDistanceM = 0;
 		brakingTimeS = 0;
@@ -623,7 +715,7 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						<span class="text-[10px] text-gray-500">
 							{bike.hasFrame ? 'Frame' : ''}{bike.hasFront ? ' + Front' : ''}{bike.hasRear ? ' + Rear' : ''} wireframe
 							· rotors from {loadedDesign?.brakes ? 'saved model' : 'defaults'}
-							· static sag (no brake-travel yet)
+							· front travel {simFrontPct.toFixed(0)}%{simFrontBottomed ? ' · bottomed' : ''}
 						</span>
 					{/if}
 					<button onclick={requestFeedback} disabled={feedbackLoading}
@@ -638,7 +730,9 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 					{frontBrake}
 					{rearBrake}
 					{viewSide}
-					pitchDeg={simPitchDeg}
+					pitchDeg={0}
+					frontCompressionPct={simFrontPct}
+					frontBottomed={simFrontBottomed}
 					{frontWheelAngleDeg}
 					{rearWheelAngleDeg}
 					{farBgOffset}

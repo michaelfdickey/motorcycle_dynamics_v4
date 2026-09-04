@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	let { children } = $props();
 
-	const workspace = ['/frame', '/front-end', '/rear-end', '/suspension', '/brakes'];
+	const workspace = ['/frame', '/front-end', '/rear-end', '/suspension', '/brakes', '/simulation'];
 	const isWorkspace = $derived(workspace.some((p) => page.url.pathname.startsWith(p)));
 
 	const tabs = [
@@ -13,9 +13,9 @@
 		{ label: 'Rear End', href: '/rear-end' },
 		{ label: 'Suspension', href: '/suspension' },
 		{ label: 'Brakes', href: '/brakes' },
-		{ label: 'Kinematics', href: '/kinematics' },
-		{ label: 'Geometry', href: '/geometry' },
+		{ label: 'Simulation', href: '/simulation' },
 		{ label: 'Aero / CFD', href: '/aero-cfd' },
+		{ label: 'Experimental', href: '/experimental' },
 		{ label: 'Materials', href: '/materials' },
 		{ label: 'Components', href: '/components' },
 		{ label: 'Results', href: '/results' },

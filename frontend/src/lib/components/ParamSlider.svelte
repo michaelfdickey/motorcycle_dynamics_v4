@@ -11,6 +11,7 @@
 			| { unit: string; to: (v: number) => number; from: (v: number) => number; step?: number; decimals?: number }
 			| undefined,
 		hint = '',
+		tooltip = '',
 	}: {
 		label: string;
 		value: number;
@@ -21,6 +22,7 @@
 		unit?: string;
 		secondary?: { unit: string; to: (v: number) => number; from: (v: number) => number; step?: number; decimals?: number };
 		hint?: string;
+		tooltip?: string;
 	} = $props();
 
 	function setPrimary(raw: string) {
@@ -38,7 +40,9 @@
 </script>
 
 <label class="block">
-	<span class="text-xs text-gray-500">{label}</span>
+	<span class="text-xs text-gray-500 {tooltip ? 'cursor-help' : ''}" title={tooltip || undefined}>
+		{label}{#if tooltip}<span class="text-gray-600 ml-0.5">ⓘ</span>{/if}
+	</span>
 	<div class="flex items-center gap-1.5 mt-1">
 		<input type="range" {min} {max} {step} bind:value class="flex-1 min-w-0 accent-orange-500" />
 		<input

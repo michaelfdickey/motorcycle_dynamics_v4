@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { applySit, undoSit, computeGroundSit, type AssembledBike, type Pt } from '$lib/bikeAssembly';
 	import { buildFrontEndVisual, visualParamsFromDesign } from '$lib/frontEndVisual';
-	import type { BrakeParams, BrakingResults, VehicleParams } from '$lib/braking';
+	import type { BrakeParams, BrakingResults, VehicleParams, WheelGripState } from '$lib/braking';
 	import { totalPotCount } from '$lib/braking';
 
 	let {
@@ -27,6 +27,12 @@
 		brakingTimeS = 0,
 		frontSlip = false,
 		rearSlip = false,
+		frontSlipRatio = 0,
+		rearSlipRatio = 0,
+		frontWheelState = 'rolling' as WheelGripState,
+		rearWheelState = 'rolling' as WheelGripState,
+		smokePuffs = [] as { id: number; bornS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[],
+		simDistanceM = 0,
 		frontRotorKJ = 0,
 		rearRotorKJ = 0,
 		initialSpeedKph = 100,
@@ -53,6 +59,12 @@
 		brakingTimeS?: number;
 		frontSlip?: boolean;
 		rearSlip?: boolean;
+		frontSlipRatio?: number;
+		rearSlipRatio?: number;
+		frontWheelState?: WheelGripState;
+		rearWheelState?: WheelGripState;
+		smokePuffs?: { id: number; bornS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[];
+		simDistanceM?: number;
 		frontRotorKJ?: number;
 		rearRotorKJ?: number;
 		initialSpeedKph?: number;
@@ -285,6 +297,10 @@
 		<circle cx={w.axle.x} cy={w.axle.y} r={Math.max(4, w.disc * 0.22)} fill="none" stroke="#ef4444" stroke-width="1" opacity="0.5" />
 		<rect x={calX} y={w.axle.y - calH / 2} width={calW} height={calH} rx="2" fill="#ef4444" opacity="0.7" />
 		<circle cx={w.axle.x} cy={w.axle.y} r="3.5" fill={w.color} />
+		{#if (w.color === '#f97316' && frontSlip) || (w.color === '#22d3ee' && rearSlip)}
+			<ellipse cx={w.axle.x} cy={groundY} rx={Math.max(10, w.r * 0.22)} ry={4}
+				fill="#9ca3af" opacity="0.35" />
+		{/if}
 		<text x={w.axle.x} y={w.axle.y - w.r - 14} fill="#ef4444" font-size="9" text-anchor="middle">
 			Ø{Math.round(w.brake.discDiameterMm)} / {w.pots}-pot
 		</text>
@@ -459,6 +475,22 @@
 		<line x1={pvt.x} y1={pvt.y} x2={rearAxleS.x} y2={rearAxleS.y} stroke="#22d3ee" stroke-width="3" />
 	{/if}
 
+	<!-- Lockup smoke: short fading puffs at the contact patch (bike-fixed camera) -->
+	{#each smokePuffs as p (p.id)}
+		{@const t = Math.min(1, Math.max(0, (simTimeS - p.bornS) / Math.max(0.15, p.life)))}
+		{@const axle = p.end === 'front' ? frontAxleS : rearAxleS}
+		{@const dir = viewSide === 'right' ? -1 : 1}
+		{@const cx = axle.x + dir * t * 46 + p.jx}
+		{@const cy = groundY - t * p.rise}
+		{@const rr = p.size * (0.7 + t * 1.1)}
+		{@const op = (1 - t) * 0.28}
+		{#if t < 1 && op > 0.03}
+			<ellipse cx={cx} cy={cy} rx={rr} ry={rr * 0.65} fill="#d1d5db" opacity={op} />
+			<ellipse cx={cx + rr * 0.3} cy={cy - rr * 0.2} rx={rr * 0.72} ry={rr * 0.5} fill="#f1f5f9" opacity={op * 0.65} />
+			<ellipse cx={cx - rr * 0.22} cy={cy - rr * 0.1} rx={rr * 0.5} ry={rr * 0.38} fill="#94a3b8" opacity={op * 0.4} />
+		{/if}
+	{/each}
+
 	<!-- CoG (pitches with chassis) -->
 	<circle cx={cogP.x} cy={cogP.y} r="6" fill="#f97316" opacity="0.9" />
 	<text x={cogP.x + 10} y={cogP.y - 5} fill="#f97316" font-size="10">CoG</text>
@@ -475,7 +507,8 @@
 	</text>
 
 	{#if simRunning || simTimeS > 0}
-		<rect x="8" y="8" width="250" height={frontSlip || rearSlip ? 105 : 85} rx="4" fill="#000" opacity="0.6" />
+		{@const extra = (frontSlip || rearSlip || frontSlipRatio > 0.08 || rearSlipRatio > 0.08) ? 36 : 0}
+		<rect x="8" y="8" width="268" height={85 + extra} rx="4" fill="#000" opacity="0.6" />
 		<text x="15" y="26" fill="#e5e7eb" font-size="12" font-family="monospace">
 			Speed: {(simSpeedMs * 3.6).toFixed(1)} km/h ({(simSpeedMs * 2.237).toFixed(1)} mph)
 		</text>
@@ -484,11 +517,13 @@
 			Stop Dist: {brakingDistanceM.toFixed(1)} m ({(brakingDistanceM * 3.281).toFixed(1)} ft)
 		</text>
 		<text x="15" y="77" fill="#e5e7eb" font-size="12" font-family="monospace">Brake Time: {brakingTimeS.toFixed(2)} s</text>
-		{#if frontSlip}
-			<text x="15" y="96" fill="#ef4444" font-size="11" font-weight="bold">⚠ FRONT LOCKUP</text>
-		{/if}
-		{#if rearSlip}
-			<text x="15" y={frontSlip ? 110 : 96} fill="#ef4444" font-size="11" font-weight="bold">⚠ REAR LOCKUP</text>
+		{#if extra}
+			<text x="15" y="96" fill={frontSlip ? '#ef4444' : frontSlipRatio > 0.12 ? '#fbbf24' : '#9ca3af'} font-size="10" font-family="monospace">
+				F {frontSlip ? 'LOCKED' : frontWheelState} · slip {(frontSlipRatio * 100).toFixed(0)}%
+			</text>
+			<text x="15" y="112" fill={rearSlip ? '#ef4444' : rearSlipRatio > 0.12 ? '#fbbf24' : '#9ca3af'} font-size="10" font-family="monospace">
+				R {rearSlip ? 'LOCKED' : rearWheelState} · slip {(rearSlipRatio * 100).toFixed(0)}%
+			</text>
 		{/if}
 	{/if}
 </svg>

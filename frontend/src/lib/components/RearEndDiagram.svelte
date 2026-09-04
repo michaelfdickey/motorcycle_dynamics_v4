@@ -3,6 +3,7 @@
 	import type { TireDimensions } from '$lib/tire';
 	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
 	import { getViewCam, setViewCam, emptySnap, type CamSnap } from '$lib/viewCamera';
+	import BrakeRotor from './BrakeRotor.svelte';
 
 	let {
 		results,
@@ -14,6 +15,9 @@
 		viewSide = 'right',
 		unitSystem = 'metric',
 		persistKey = 'rearEnd',
+		brakeDiscDiameterMm = 0,
+		brakeDualSided = false,
+		brakePotCount = 0,
 	}: {
 		results: RearEndResults;
 		tire: TireDimensions;
@@ -24,6 +28,9 @@
 		viewSide?: 'left' | 'right';
 		unitSystem?: UnitSystem;
 		persistKey?: string;
+		brakeDiscDiameterMm?: number;
+		brakeDualSided?: boolean;
+		brakePotCount?: number;
 	} = $props();
 
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -465,6 +472,18 @@
 				fill="none" stroke="#6b7280" stroke-width={tire.outerRadiusMm - tire.rimRadiusMm}
 				opacity="0.12"
 			/>
+
+			{#if brakeDiscDiameterMm > 0}
+				<BrakeRotor
+					cx={results.axleCenter.x}
+					cy={sy(results.axleCenter.y)}
+					discDiameterMm={brakeDiscDiameterMm}
+					tireOuterMm={tire.outerRadiusMm}
+					potCount={brakePotCount}
+					dualSided={brakeDualSided}
+					{sw}
+				/>
+			{/if}
 
 			<!-- Pivot -->
 			<circle cx={results.pivot.x} cy={sy(results.pivot.y)} r={sw * 3} fill="#22d3ee" stroke="#fff" stroke-width={sw * 0.5} />

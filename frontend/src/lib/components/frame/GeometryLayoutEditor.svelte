@@ -3,6 +3,7 @@
 	import { listVehicles, saveVehicleDesign, loadVehicleDesign, getLastFileName, setLastFileName, type VehicleDesign } from '$lib/vehicleStore';
 	import { computeFrontEnd, type FrontEndResults, type FrontEndInputs } from '$lib/frontEndGeometry';
 	import { computeRearEnd, type RearEndResults, type RearEndInputs, type RearSuspensionType, type ShockAction } from '$lib/rearEndGeometry';
+	import { buildFrontEndVisual, visualParamsFromDesign, type FrontEndVisual } from '$lib/frontEndVisual';
 	import { parseTireDesignation, computeTireDimensions, type TireDimensions } from '$lib/tire';
 	import { saveRefImageBlob, loadRefImageBlob, clearRefImageBlob } from '$lib/refImageCache';
 
@@ -485,6 +486,24 @@
 		const sx = (effectiveX - panX) * zoom + canvasW / 2;
 		const sy = -(wy - panY) * zoom + canvasH / 2;
 		return [sx, sy];
+	}
+	function screenPoly(pts: { x: number; y: number }[], ox: number, oy: number): string {
+		return pts.map((p) => {
+			const [sx, sy] = worldToScreen(p.x + ox, p.y + oy);
+			return `${sx},${sy}`;
+		}).join(' ');
+	}
+	function capsulePts(a: { x: number; y: number }, b: { x: number; y: number }, width: number) {
+		const dx = b.x - a.x, dy = b.y - a.y;
+		const len = Math.hypot(dx, dy) || 1;
+		const px = (-dy / len) * (width / 2);
+		const py = (dx / len) * (width / 2);
+		return [
+			{ x: a.x + px, y: a.y + py },
+			{ x: a.x - px, y: a.y - py },
+			{ x: b.x - px, y: b.y - py },
+			{ x: b.x + px, y: b.y + py },
+		];
 	}
 	function screenToWorld(sx: number, sy: number): [number, number] {
 		const effectiveX = (sx - canvasW / 2) / zoom + panX;
@@ -1144,6 +1163,15 @@
 	let rearEndResults = $state<RearEndResults | null>(null);
 	let rearEndTire = $state<TireDimensions | null>(null);
 
+	const frontVisual = $derived.by((): FrontEndVisual | null => {
+		if (!frontEndData || !frontEndResults) return null;
+		try {
+			return buildFrontEndVisual(visualParamsFromDesign(frontEndData as Record<string, unknown>, frontEndResults));
+		} catch {
+			return null;
+		}
+	});
+
 	// Load front end data whenever vehicle name changes or on mount
 	async function loadFrontEndData() {
 		if (!vehicleName.trim()) {
@@ -1795,158 +1823,88 @@
 					<line x1={hx} y1={hy + (16 * zoom > 8 ? 16 * zoom : 8)} x2={ax_} y2={ay_} stroke="#34d399" stroke-width="1" opacity="0.2" stroke-dasharray="4,3" />
 				{/if}
 
-				<!-- Front End geometry overlay -->
-				{#if showFrontEnd && frontEndResults && frontEndTire}
+				<!-- Front End geometry overlay (same drawing as the Front End tool / Brakes) -->
+				{#if showFrontEnd && frontVisual && frontEndResults && frontEndTire}
 					{@const feAnchor = getAnchorNode('front_anchor')}
 					{#if feAnchor}
-						{@const fe = frontEndResults}
-						{@const fed = frontEndData}
-						{@const anchorX = feAnchor.x}
-						{@const anchorY = feAnchor.y}
-						{@const offsetX = anchorX - fe.steeringColumnCenter.x}
-						{@const offsetY = anchorY - fe.steeringColumnCenter.y}
-						{@const feColor = '#f97316'}
-						{@const feOpacity = 0.6}
-						{@const feRakeRad = (fed?.rakeAngleDeg ?? rakeAngleDeg) * Math.PI / 180}
-						{@const saDirX = -Math.sin(feRakeRad)}
-						{@const saDirY = Math.cos(feRakeRad)}
-						{@const saPerpX = saDirY}
-						{@const saPerpY = -saDirX}
-						{@const forkOffset = fed?.forkOffsetMm ?? 40}
-						{@const scHeight = fed?.steeringColumnHeightMm ?? 200}
-						{@const scHalfH = scHeight / 2}
-						{@const scHalfW = 25}
-						{@const ttThick = scHalfW / 2}
-						{@const ttGap = 3}
-
-						<!-- Steering axis line (full length) -->
-						{@const [saGx, saGy] = worldToScreen(fe.steeringAxisGround.x + offsetX, fe.steeringAxisGround.y + offsetY)}
-						{@const [saTx, saTy] = worldToScreen(fe.steeringAxisTop.x + offsetX, fe.steeringAxisTop.y + offsetY)}
-						<line x1={saGx} y1={saGy} x2={saTx} y2={saTy}
-							stroke="#60a5fa" stroke-width="1" stroke-dasharray="8,4" opacity={feOpacity * 0.6} />
-
-						<!-- Steering column rectangle -->
-						{@const scCx = fe.steeringColumnCenter.x + offsetX}
-						{@const scCy = fe.steeringColumnCenter.y + offsetY}
-						{@const sc1x = scCx + scHalfH * saDirX + scHalfW * saPerpX}
-						{@const sc1y = scCy + scHalfH * saDirY + scHalfW * saPerpY}
-						{@const sc2x = scCx + scHalfH * saDirX - scHalfW * saPerpX}
-						{@const sc2y = scCy + scHalfH * saDirY - scHalfW * saPerpY}
-						{@const sc3x = scCx - scHalfH * saDirX - scHalfW * saPerpX}
-						{@const sc3y = scCy - scHalfH * saDirY - scHalfW * saPerpY}
-						{@const sc4x = scCx - scHalfH * saDirX + scHalfW * saPerpX}
-						{@const sc4y = scCy - scHalfH * saDirY + scHalfW * saPerpY}
-						{@const [s1x, s1y] = worldToScreen(sc1x, sc1y)}
-						{@const [s2x, s2y] = worldToScreen(sc2x, sc2y)}
-						{@const [s3x, s3y] = worldToScreen(sc3x, sc3y)}
-						{@const [s4x, s4y] = worldToScreen(sc4x, sc4y)}
-						<polygon points="{s1x},{s1y} {s2x},{s2y} {s3x},{s3y} {s4x},{s4y}"
-							fill="none" stroke={feColor} stroke-width="2" opacity={feOpacity} />
-
-						<!-- Top triple tree -->
-						{@const ttTopCy = scCy + (scHalfH + ttGap + ttThick / 2) * saDirY}
-						{@const ttTopCx = scCx + (scHalfH + ttGap + ttThick / 2) * saDirX}
-						{@const ttMinPerp = Math.min(-scHalfW, forkOffset - scHalfW)}
-						{@const ttMaxPerp = Math.max(scHalfW, forkOffset + scHalfW)}
-						{@const tt1x = ttTopCx + ttThick / 2 * saDirX + ttMinPerp * saPerpX}
-						{@const tt1y = ttTopCy + ttThick / 2 * saDirY + ttMinPerp * saPerpY}
-						{@const tt2x = ttTopCx + ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
-						{@const tt2y = ttTopCy + ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
-						{@const tt3x = ttTopCx - ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
-						{@const tt3y = ttTopCy - ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
-						{@const tt4x = ttTopCx - ttThick / 2 * saDirX + ttMinPerp * saPerpX}
-						{@const tt4y = ttTopCy - ttThick / 2 * saDirY + ttMinPerp * saPerpY}
-						{@const [t1x, t1y] = worldToScreen(tt1x, tt1y)}
-						{@const [t2x, t2y] = worldToScreen(tt2x, tt2y)}
-						{@const [t3x, t3y] = worldToScreen(tt3x, tt3y)}
-						{@const [t4x, t4y] = worldToScreen(tt4x, tt4y)}
-						<polygon points="{t1x},{t1y} {t2x},{t2y} {t3x},{t3y} {t4x},{t4y}"
-							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
-
-						<!-- Bottom triple tree -->
-						{@const btTopCy = scCy - (scHalfH + ttGap + ttThick / 2) * saDirY}
-						{@const btTopCx = scCx - (scHalfH + ttGap + ttThick / 2) * saDirX}
-						{@const bt1x = btTopCx + ttThick / 2 * saDirX + ttMinPerp * saPerpX}
-						{@const bt1y = btTopCy + ttThick / 2 * saDirY + ttMinPerp * saPerpY}
-						{@const bt2x = btTopCx + ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
-						{@const bt2y = btTopCy + ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
-						{@const bt3x = btTopCx - ttThick / 2 * saDirX + ttMaxPerp * saPerpX}
-						{@const bt3y = btTopCy - ttThick / 2 * saDirY + ttMaxPerp * saPerpY}
-						{@const bt4x = btTopCx - ttThick / 2 * saDirX + ttMinPerp * saPerpX}
-						{@const bt4y = btTopCy - ttThick / 2 * saDirY + ttMinPerp * saPerpY}
-						{@const [b1x, b1y] = worldToScreen(bt1x, bt1y)}
-						{@const [b2x, b2y] = worldToScreen(bt2x, bt2y)}
-						{@const [b3x, b3y] = worldToScreen(bt3x, bt3y)}
-						{@const [b4x, b4y] = worldToScreen(bt4x, bt4y)}
-						<polygon points="{b1x},{b1y} {b2x},{b2y} {b3x},{b3y} {b4x},{b4y}"
-							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
-
-						<!-- Fork tube (line from forkTop to forkBottom, offset from SA by forkOffset) -->
-						{@const [ftx, fty] = worldToScreen(fe.forkTop.x + offsetX, fe.forkTop.y + offsetY)}
-						{@const [fbx, fby] = worldToScreen(fe.forkBottom.x + offsetX, fe.forkBottom.y + offsetY)}
-						{@const forkTubeW = (fed?.forkTubeSize?.includes('54') ? 54 : fed?.forkTubeSize?.includes('49') ? 49 : fed?.forkTubeSize?.includes('46') ? 46 : fed?.forkTubeSize?.includes('41') ? 41 : fed?.forkTubeSize?.includes('37') ? 37 : 41) * zoom}
-						<line x1={ftx} y1={fty} x2={fbx} y2={fby}
-							stroke={feColor} stroke-width={Math.max(2, forkTubeW * 0.8)} opacity={feOpacity * 0.4} />
-						<line x1={ftx} y1={fty} x2={fbx} y2={fby}
-							stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
-
-						<!-- Link arm (for leading/trailing link types) -->
-						{#if fe.linkPivot && fe.linkEnd}
-							{@const [lpx, lpy] = worldToScreen(fe.linkPivot.x + offsetX, fe.linkPivot.y + offsetY)}
-							{@const [lex, ley] = worldToScreen(fe.linkEnd.x + offsetX, fe.linkEnd.y + offsetY)}
-							<line x1={lpx} y1={lpy} x2={lex} y2={ley}
-								stroke={feColor} stroke-width="3" opacity={feOpacity} />
-							<circle cx={lpx} cy={lpy} r={4} fill={feColor} opacity={feOpacity} />
-							<circle cx={lex} cy={ley} r={4} fill={feColor} opacity={feOpacity} />
+						{@const vis = frontVisual}
+						{@const ox = feAnchor.x - frontEndResults.steeringColumnCenter.x}
+						{@const oy = feAnchor.y - frontEndResults.steeringColumnCenter.y}
+						{@const c = '#f97316'}
+						{@const metal = '#9ca3af'}
+						{@const lilac = '#c4b5d4'}
+						{@const op = 0.95}
+						{@const sw = Math.max(1.1, 1.4)}
+						{@const [sa1x, sa1y] = worldToScreen(vis.saLine.p1.x + ox, vis.saLine.p1.y + oy)}
+						{@const [sa2x, sa2y] = worldToScreen(vis.saLine.p2.x + ox, vis.saLine.p2.y + oy)}
+						<line x1={sa1x} y1={sa1y} x2={sa2x} y2={sa2y} stroke="#facc15" stroke-width="1" stroke-dasharray="8,4" opacity={op * 0.85} />
+						{#if vis.isLink}
+							<polygon points={screenPoly(vis.solidForkCorners, ox, oy)} fill="#4a5568" fill-opacity="0.85" stroke={metal} stroke-width={sw} opacity={op} />
+						{:else}
+							<polygon points={screenPoly(vis.sliderCorners, ox, oy)} fill="#2d3748" fill-opacity="0.85" stroke="#6b7280" stroke-width={sw} opacity={op} />
+							<polygon points={screenPoly(vis.stanchionCorners, ox, oy)} fill="#4a5568" fill-opacity="0.85" stroke={metal} stroke-width={sw} opacity={op} />
 						{/if}
-
-						<!-- Fork end cap circle -->
-						{@const forkCapR = 25.4}
-						{@const forkBottomX = fe.forkBottom.x + offsetX}
-						{@const forkBottomY = fe.forkBottom.y + offsetY}
-						{@const capCx = forkBottomX - 25.4 * saDirX}
-						{@const capCy = forkBottomY - 25.4 * saDirY}
-						{@const [fcx, fcy] = worldToScreen(capCx, capCy)}
-						<circle cx={fcx} cy={fcy} r={forkCapR * zoom}
-							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity} />
-
-						<!-- Axle/Spindle -->
-						{@const [axX, axY] = worldToScreen(fe.axleCenter.x + offsetX, fe.axleCenter.y + offsetY)}
-						{@const spindleOuterR = 25.4 * zoom}
-						{@const spindleInnerR = 12.7 * zoom}
-						<circle cx={axX} cy={axY} r={spindleOuterR}
-							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.7} />
-						<circle cx={axX} cy={axY} r={spindleInnerR}
-							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.7} />
-						<circle cx={axX} cy={axY} r={3} fill={feColor} opacity={feOpacity} />
-
-						<!-- Wheel (outer tire) -->
+						{@const [fo1x, fo1y] = worldToScreen(vis.forkOffsetLine.p1.x + ox, vis.forkOffsetLine.p1.y + oy)}
+						{@const [fo2x, fo2y] = worldToScreen(vis.forkOffsetLine.p2.x + ox, vis.forkOffsetLine.p2.y + oy)}
+						<line x1={fo1x} y1={fo1y} x2={fo2x} y2={fo2y} stroke="#3b82f6" stroke-width="1" stroke-dasharray="8,4" opacity={op * 0.8} />
+						<polygon points={screenPoly(vis.scCorners, ox, oy)} fill="#4b5563" fill-opacity="0.9" stroke={metal} stroke-width={sw} opacity={op} />
+						<polygon points={screenPoly(vis.topTtCorners, ox, oy)} fill="#374151" fill-opacity="0.9" stroke={metal} stroke-width={sw} opacity={op} />
+						<polygon points={screenPoly(vis.bottomTtCorners, ox, oy)} fill="#374151" fill-opacity="0.9" stroke={metal} stroke-width={sw} opacity={op} />
+						{@const capL = vis.forkCapLines}
+						{@const [tlx, tly] = worldToScreen(capL.topLeft.x + ox, capL.topLeft.y + oy)}
+						{@const [trx, try_] = worldToScreen(capL.topRight.x + ox, capL.topRight.y + oy)}
+						{@const [blx, bly] = worldToScreen(capL.botLeft.x + ox, capL.botLeft.y + oy)}
+						{@const [brx, bry] = worldToScreen(capL.botRight.x + ox, capL.botRight.y + oy)}
+						<line x1={tlx} y1={tly} x2={blx} y2={bly} stroke={lilac} stroke-width={sw} opacity={op} />
+						<line x1={trx} y1={try_} x2={brx} y2={bry} stroke={lilac} stroke-width={sw} opacity={op} />
+						{@const [fcx, fcy] = worldToScreen(vis.forkCapCenter.x + ox, vis.forkCapCenter.y + oy)}
+						<circle cx={fcx} cy={fcy} r={vis.forkCapR * zoom} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+						{#each vis.tangents as seg}
+							{@const [a1, a2] = worldToScreen(seg.p1.x + ox, seg.p1.y + oy)}
+							{@const [b1, b2] = worldToScreen(seg.p2.x + ox, seg.p2.y + oy)}
+							<line x1={a1} y1={a2} x2={b1} y2={b2} stroke={lilac} stroke-width={sw} opacity={op} />
+						{/each}
+						{@const [spx, spy] = worldToScreen(vis.spindle.x + ox, vis.spindle.y + oy)}
+						<circle cx={spx} cy={spy} r={vis.spindleOuterR * zoom} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+						<circle cx={spx} cy={spy} r={vis.spindleInnerR * zoom} fill="none" stroke="#d8cce5" stroke-width={sw} opacity={op} />
+						<circle cx={spx} cy={spy} r={Math.max(1.4, 2.2)} fill="#d8cce5" opacity={op} />
+						{#if vis.isLink}
+							{@const [upx, upy] = worldToScreen(vis.suspUpperMount.x + ox, vis.suspUpperMount.y + oy)}
+							{@const [lox, loy] = worldToScreen(vis.suspMount.x + ox, vis.suspMount.y + oy)}
+							<line x1={upx} y1={upy} x2={lox} y2={loy} stroke="#fdba74" stroke-width={sw} stroke-dasharray="4,4" opacity={op} />
+							<polygon points={screenPoly(vis.shockUpperCorners, ox, oy)} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+							<polygon points={screenPoly(vis.shockLowerCorners, ox, oy)} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+							<circle cx={lox} cy={loy} r={vis.spindleOuterR * zoom} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+							<circle cx={lox} cy={loy} r={vis.spindleInnerR * zoom} fill="none" stroke="#d8cce5" stroke-width={sw} opacity={op} />
+							<circle cx={lox} cy={loy} r={Math.max(1.4, 2.2)} fill="#d8cce5" opacity={op} />
+							<circle cx={upx} cy={upy} r={vis.spindleOuterR * zoom} fill="none" stroke={lilac} stroke-width={sw} opacity={op} />
+							<circle cx={upx} cy={upy} r={vis.spindleInnerR * zoom} fill="none" stroke="#d8cce5" stroke-width={sw} opacity={op} />
+							<circle cx={upx} cy={upy} r={Math.max(1.4, 2.2)} fill="#d8cce5" opacity={op} />
+							{@const [ut1x, ut1y] = worldToScreen(vis.upperTangent.p1.x + ox, vis.upperTangent.p1.y + oy)}
+							{@const [ut2x, ut2y] = worldToScreen(vis.upperTangent.p2.x + ox, vis.upperTangent.p2.y + oy)}
+							<line x1={ut1x} y1={ut1y} x2={ut2x} y2={ut2y} stroke={lilac} stroke-width={sw} opacity={op} />
+							{#if vis.upperTtTangent}
+								{@const [tt1x, tt1y] = worldToScreen(vis.upperTtTangent.p1.x + ox, vis.upperTtTangent.p1.y + oy)}
+								{@const [tt2x, tt2y] = worldToScreen(vis.upperTtTangent.p2.x + ox, vis.upperTtTangent.p2.y + oy)}
+								<line x1={tt1x} y1={tt1y} x2={tt2x} y2={tt2y} stroke={lilac} stroke-width={sw} opacity={op} />
+							{/if}
+						{/if}
 						{@const wheelR = frontEndTire.outerRadiusMm * zoom}
-						<circle cx={axX} cy={axY} r={wheelR}
-							fill="none" stroke={feColor} stroke-width="1.5" opacity={feOpacity * 0.6} />
-						<!-- Rim -->
 						{@const rimR = frontEndTire.rimRadiusMm * zoom}
-						<circle cx={axX} cy={axY} r={rimR}
-							fill="none" stroke={feColor} stroke-width="1" opacity={feOpacity * 0.4} />
-						<!-- Tire cross section (thick stroke) -->
 						{@const tireW = (frontEndTire.outerRadiusMm - frontEndTire.rimRadiusMm) * zoom}
 						{@const tireMidR = (frontEndTire.outerRadiusMm + frontEndTire.rimRadiusMm) / 2 * zoom}
-						<circle cx={axX} cy={axY} r={tireMidR}
-							fill="none" stroke={feColor} stroke-width={tireW} opacity={feOpacity * 0.12} />
-
-						<!-- Contact patch -->
-						{@const [cpx, cpy] = worldToScreen(fe.contactPatch.x + offsetX, fe.contactPatch.y + offsetY)}
-						<circle cx={cpx} cy={cpy} r={4} fill={feColor} stroke="#fff" stroke-width="1" opacity={feOpacity} />
-
-						<!-- Label at top -->
-						{@const [labelX, labelY] = worldToScreen(fe.steeringAxisTop.x + offsetX, fe.steeringAxisTop.y + offsetY)}
-						<text x={labelX + 10} y={labelY - 5} fill={feColor} font-size="10" opacity={feOpacity * 0.8}>
-							Front End
-						</text>
+						<circle cx={spx} cy={spy} r={tireMidR} fill="none" stroke="#64748b" stroke-width={tireW} opacity="0.35" />
+						<circle cx={spx} cy={spy} r={wheelR} fill="none" stroke="#d4d4d8" stroke-width="1.8" opacity={op} />
+						<circle cx={spx} cy={spy} r={rimR} fill="none" stroke="#94a3b8" stroke-width="1.2" opacity={op} />
+						{@const [cpx, cpy] = worldToScreen(vis.spindle.x + ox, vis.spindle.y + oy - frontEndTire.outerRadiusMm)}
+						<circle cx={cpx} cy={cpy} r={4} fill={c} stroke="#fff" stroke-width="1" opacity={op} />
+						{@const [scx, scy] = worldToScreen(vis.scCenter.x + ox, vis.scCenter.y + oy)}
+						<circle cx={scx} cy={scy} r={4} fill={c} opacity={op} />
+						<text x={scx + 10} y={scy - 8} fill={c} font-size="10" opacity={op * 0.9}>Front End</text>
 					{/if}
 				{/if}
 
-				<!-- Rear End geometry overlay (anchored at rear_anchor = swingarm pivot) -->
+				<!-- Rear End geometry overlay (same beams, arc, and shock as the Rear End tool / Brakes) -->
 				{#if showRearEnd && rearEndResults && rearEndTire}
 					{@const reAnchor = getAnchorNode('rear_anchor')}
 					{#if reAnchor}
@@ -1954,48 +1912,81 @@
 						{@const red = rearEndData}
 						{@const ox = reAnchor.x - re.pivot.x}
 						{@const oy = reAnchor.y - re.pivot.y}
-						{@const reColor = '#22d3ee'}
-						{@const reOp = 0.65}
+						{@const c = '#22d3ee'}
+						{@const metal = '#9ca3af'}
+						{@const op = 0.95}
+						{@const sw = Math.max(1.1, 1.4)}
+						{@const type = (red?.suspensionType ?? 'twin_shock') as string}
+						{@const section = red?.swingarmSectionMm ?? 42}
+						{@const stayW = section * 0.5}
+						{@const shockDia = red?.shockBodyDiaMm ?? 50}
 						{@const [axX, axY] = worldToScreen(re.axleCenter.x + ox, re.axleCenter.y + oy)}
 						{@const [pvX, pvY] = worldToScreen(re.pivot.x + ox, re.pivot.y + oy)}
-						{@const [sh1x, sh1y] = worldToScreen(re.shockLower.x + ox, re.shockLower.y + oy)}
-						{@const [sh2x, sh2y] = worldToScreen(re.shockUpper.x + ox, re.shockUpper.y + oy)}
-						{@const [csX, csY] = worldToScreen(re.countershaft.x + ox, re.countershaft.y + oy)}
-						{@const wheelR = rearEndTire.outerRadiusMm * zoom}
-						{@const rimR = rearEndTire.rimRadiusMm * zoom}
-						<line x1={axX} y1={axY} x2={pvX} y2={pvY}
-							stroke={reColor} stroke-width={Math.max(2, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.35)} opacity={reOp * 0.85} stroke-linecap="round" />
+						{@const [loX, loY] = worldToScreen(re.shockLower.x + ox, re.shockLower.y + oy)}
+						{@const [upX, upY] = worldToScreen(re.shockUpper.x + ox, re.shockUpper.y + oy)}
+						{@const sdx = re.shockUpper.x - re.shockLower.x}
+						{@const sdy = re.shockUpper.y - re.shockLower.y}
+						{@const slen = Math.hypot(sdx, sdy) || 1}
+						{@const bodyLen = Math.max(40, slen * 0.55)}
+						{@const bodyEnd = { x: re.shockLower.x + (sdx / slen) * bodyLen, y: re.shockLower.y + (sdy / slen) * bodyLen }}
+						{@const shaftStart = { x: re.shockLower.x + (sdx / slen) * bodyLen * 0.7, y: re.shockLower.y + (sdy / slen) * bodyLen * 0.7 }}
+						{#if re.axleArc && re.axleArc.length > 1 && type !== 'hardtail'}
+							<polyline
+								points={re.axleArc.map((p) => { const [sx, sy] = worldToScreen(p.x + ox, p.y + oy); return `${sx},${sy}`; }).join(' ')}
+								fill="none" stroke="#22c55e" stroke-width={sw} stroke-dasharray="5,4" opacity={op * 0.75}
+							/>
+						{/if}
+						{#if re.chainUpper && re.chainLower}
+							{@const [cu1x, cu1y] = worldToScreen(re.chainUpper.p1.x + ox, re.chainUpper.p1.y + oy)}
+							{@const [cu2x, cu2y] = worldToScreen(re.chainUpper.p2.x + ox, re.chainUpper.p2.y + oy)}
+							{@const [cl1x, cl1y] = worldToScreen(re.chainLower.p1.x + ox, re.chainLower.p1.y + oy)}
+							{@const [cl2x, cl2y] = worldToScreen(re.chainLower.p2.x + ox, re.chainLower.p2.y + oy)}
+							<line x1={cu1x} y1={cu1y} x2={cu2x} y2={cu2y} stroke="#a8a29e" stroke-width={sw} opacity={op * 0.7} />
+							<line x1={cl1x} y1={cl1y} x2={cl2x} y2={cl2y} stroke="#a8a29e" stroke-width={sw} opacity={op * 0.7} />
+						{/if}
+						{#if type === 'hardtail' || type === 'softail'}
+							<line x1={pvX} y1={pvY} x2={axX} y2={axY} stroke={metal} stroke-width={Math.max(2, section * zoom * 0.35)} stroke-linecap="round" opacity={type === 'softail' ? op * 0.55 : op} />
+						{/if}
+						{#if type !== 'hardtail'}
+							<polygon points={screenPoly(capsulePts(re.axleCenter, re.pivot, section), ox, oy)} fill="#374151" fill-opacity="0.85" stroke={metal} stroke-width={sw} opacity={op} />
+						{/if}
 						{#if re.apex}
 							{@const [apX, apY] = worldToScreen(re.apex.x + ox, re.apex.y + oy)}
-							<line x1={axX} y1={axY} x2={apX} y2={apY} stroke={reColor} stroke-width={Math.max(1.5, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.18)} opacity={reOp} />
-							<line x1={pvX} y1={pvY} x2={apX} y2={apY} stroke={reColor} stroke-width={Math.max(1.5, ((red?.swingarmSectionMm ?? 42) * zoom) * 0.18)} opacity={reOp} />
-							<circle cx={apX} cy={apY} r={3} fill={reColor} opacity={reOp} />
+							<polygon points={screenPoly(capsulePts(re.axleCenter, re.apex, stayW), ox, oy)} fill="#4b5563" fill-opacity="0.85" stroke={metal} stroke-width={sw * 0.7} opacity={op} />
+							<polygon points={screenPoly(capsulePts(re.pivot, re.apex, stayW), ox, oy)} fill="#4b5563" fill-opacity="0.85" stroke={metal} stroke-width={sw * 0.7} opacity={op} />
+							<circle cx={apX} cy={apY} r={3} fill="#f97316" opacity={op} />
 						{/if}
 						{#if re.rockerPivot && re.rockerDogbone && re.rockerShock && re.dogboneArm}
 							{@const [rpX, rpY] = worldToScreen(re.rockerPivot.x + ox, re.rockerPivot.y + oy)}
 							{@const [rdX, rdY] = worldToScreen(re.rockerDogbone.x + ox, re.rockerDogbone.y + oy)}
 							{@const [rsX, rsY] = worldToScreen(re.rockerShock.x + ox, re.rockerShock.y + oy)}
 							{@const [daX, daY] = worldToScreen(re.dogboneArm.x + ox, re.dogboneArm.y + oy)}
-							<line x1={daX} y1={daY} x2={rdX} y2={rdY} stroke={reColor} stroke-width="1.5" opacity={reOp} />
-							<line x1={rdX} y1={rdY} x2={rsX} y2={rsY} stroke={reColor} stroke-width="2" opacity={reOp} />
-							<circle cx={rpX} cy={rpY} r={3} fill={reColor} opacity={reOp} />
+							<line x1={daX} y1={daY} x2={rdX} y2={rdY} stroke="#67e8f9" stroke-width="1.5" opacity={op} />
+							<line x1={rdX} y1={rdY} x2={rsX} y2={rsY} stroke="#c4b5fd" stroke-width="2" opacity={op} />
+							<circle cx={rpX} cy={rpY} r={3} fill="#a78bfa" opacity={op} />
 						{/if}
-						{#if (red?.suspensionType ?? 'twin_shock') !== 'hardtail'}
-							<line x1={sh1x} y1={sh1y} x2={sh2x} y2={sh2y} stroke={reColor} stroke-width="2" opacity={reOp} />
-							<circle cx={sh1x} cy={sh1y} r={3} fill={reColor} opacity={reOp} />
-							<circle cx={sh2x} cy={sh2y} r={3} fill={reColor} opacity={reOp} />
+						{#if type !== 'hardtail'}
+							<polygon points={screenPoly(capsulePts(re.shockLower, bodyEnd, shockDia), ox, oy)} fill="#4b5563" fill-opacity="0.85" stroke="#fdba74" stroke-width={sw} opacity={op} />
+							<polygon points={screenPoly(capsulePts(shaftStart, re.shockUpper, Math.max(10, shockDia * 0.32)), ox, oy)} fill="none" stroke="#fdba74" stroke-width={sw} opacity={op} />
+							<line x1={loX} y1={loY} x2={upX} y2={upY} stroke="#f97316" stroke-width="1" stroke-dasharray="5,3" opacity={op * 0.85} />
+							<circle cx={loX} cy={loY} r={3} fill="#fdba74" opacity={op} />
+							<circle cx={upX} cy={upY} r={3} fill="#fdba74" opacity={op} />
 						{/if}
+						{@const [csX, csY] = worldToScreen(re.countershaft.x + ox, re.countershaft.y + oy)}
+						{@const wheelR = rearEndTire.outerRadiusMm * zoom}
+						{@const rimR = rearEndTire.rimRadiusMm * zoom}
 						{@const tireW = (rearEndTire.outerRadiusMm - rearEndTire.rimRadiusMm) * zoom}
 						{@const tireMidR = (rearEndTire.outerRadiusMm + rearEndTire.rimRadiusMm) / 2 * zoom}
-						<circle cx={axX} cy={axY} r={wheelR} fill="none" stroke={reColor} stroke-width="1.5" opacity={reOp * 0.7} />
-						<circle cx={axX} cy={axY} r={rimR} fill="none" stroke={reColor} stroke-width="1" opacity={reOp * 0.4} />
-						<circle cx={axX} cy={axY} r={tireMidR} fill="none" stroke={reColor} stroke-width={tireW} opacity={reOp * 0.12} />
+						<circle cx={axX} cy={axY} r={tireMidR} fill="none" stroke="#64748b" stroke-width={tireW} opacity="0.35" />
+						<circle cx={axX} cy={axY} r={wheelR} fill="none" stroke="#d4d4d8" stroke-width="1.8" opacity={op} />
+						<circle cx={axX} cy={axY} r={rimR} fill="none" stroke="#94a3b8" stroke-width="1.2" opacity={op} />
 						{@const [cpX, cpY] = worldToScreen(re.contactPatch.x + ox, re.contactPatch.y + oy)}
-						<circle cx={cpX} cy={cpY} r={4} fill={reColor} stroke="#fff" stroke-width="1" opacity={reOp} />
-						<circle cx={csX} cy={csY} r={Math.max(3, (red?.frontSprocketRadiusMm ?? 38) * zoom * 0.4)} fill="none" stroke={reColor} stroke-width="1" opacity={reOp * 0.5} />
-						<circle cx={pvX} cy={pvY} r={5} fill={reColor} stroke="#fff" stroke-width="1" opacity={reOp} />
-						<circle cx={axX} cy={axY} r={3} fill={reColor} opacity={reOp} />
-						<text x={pvX + 8} y={pvY - 8} fill={reColor} font-size="10" opacity={reOp * 0.85}>Rear End</text>
+						<circle cx={cpX} cy={cpY} r={4} fill={c} stroke="#fff" stroke-width="1" opacity={op} />
+						<circle cx={csX} cy={csY} r={Math.max(5, (red?.frontSprocketRadiusMm ?? 38) * zoom)} fill="none" stroke="#a8a29e" stroke-width={sw} opacity={op * 0.8} />
+						<circle cx={axX} cy={axY} r={Math.max(8, (red?.rearSprocketRadiusMm ?? 110) * zoom * 0.35)} fill="none" stroke="#78716c" stroke-width={sw} opacity={op * 0.8} />
+						<circle cx={pvX} cy={pvY} r={5} fill={c} stroke="#fff" stroke-width="1" opacity={op} />
+						<circle cx={axX} cy={axY} r={3} fill={c} opacity={op} />
+						<text x={pvX + 8} y={pvY - 8} fill={c} font-size="10" opacity={op * 0.9}>Rear End</text>
 					{/if}
 				{/if}
 

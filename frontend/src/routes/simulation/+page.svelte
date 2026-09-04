@@ -269,7 +269,7 @@
 	let rearSlipRatio = $state(0);
 	let frontWheelState = $state<WheelGripState>('rolling');
 	let rearWheelState = $state<WheelGripState>('rolling');
-	let smokePuffs = $state<{ id: number; bornS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[]>([]);
+	let smokePuffs = $state<{ id: number; ageS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[]>([]);
 	let smokeAccF = 0;
 	let smokeAccR = 0;
 	let smokeSeq = 0;
@@ -433,6 +433,31 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		});
 	});
 
+	const traction = $derived.by(() => {
+		const live = simRunning && brakesApplied;
+		const Nf = live && simFrontLoad > 1 ? simFrontLoad : (results?.frontAxleLoadN ?? 0);
+		const Nr = live && simRearLoad > 1 ? simRearLoad : (results?.rearAxleLoadN ?? 0);
+		const Ff = (live && brakeMode === 'rear') ? 0 : (results?.frontBrakeForceN ?? 0);
+		const Fr = (live && brakeMode === 'front') ? 0 : (results?.rearBrakeForceN ?? 0);
+		const availF = Math.max(1, Nf) * vehicle.frontTireGrip;
+		const availR = Math.max(1, Nr) * vehicle.rearTireGrip;
+		const frontPct = (Ff / availF) * 100;
+		const rearPct = (Fr / availR) * 100;
+		return {
+			frontPct,
+			rearPct,
+			frontLock: frontPct > 102,
+			rearLock: rearPct > 102,
+		};
+	});
+
+	function tractionTone(pct: number, locked: boolean): string {
+		if (locked || pct > 102) return 'text-red-400';
+		if (pct >= 85) return 'text-emerald-400';
+		if (pct >= 50) return 'text-amber-300';
+		return 'text-gray-300';
+	}
+
 	// ── Real-time simulation loop ──
 	const G_CONST = 9.81;
 
@@ -523,7 +548,11 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		if (simSpeedMs <= 0.01) {
 			simSpeedMs = 0;
 			stepFrontDive(dt, 0);
-			if (Math.abs(simFrontZMm) < 0.5 && Math.abs(simFrontZVel) < 0.03) {
+			smokePuffs = smokePuffs
+				.map((p) => ({ ...p, ageS: p.ageS + dt * 3.2 }))
+				.filter((p) => p.ageS < p.life);
+			const settled = Math.abs(simFrontZMm) < 0.5 && Math.abs(simFrontZVel) < 0.03;
+			if (settled && smokePuffs.length === 0) {
 				simFrontZMm = 0;
 				simFrontZVel = 0;
 				simFrontPct = dive?.restPct ?? 0;
@@ -606,14 +635,14 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 
 		const emitSmoke = (end: 'front' | 'rear', slip: number, locked: boolean, acc: number): number => {
 			const intensity = locked ? 1 : Math.max(0, (slip - 0.1) / 0.55);
-			if (intensity <= 0 || simSpeedMs < 0.5) return acc * 0.5;
+			if (intensity <= 0 || simSpeedMs < 0.5) return acc * 0.35;
 			acc += dt * intensity * (locked ? 28 : 12);
 			while (acc >= 1) {
 				acc -= 1;
 				smokeSeq += 1;
 				smokePuffs = [...smokePuffs, {
 					id: smokeSeq,
-					bornS: simTimeS,
+					ageS: 0,
 					life: 0.55 + Math.random() * 0.55,
 					rise: 10 + Math.random() * 18,
 					size: 8 + Math.random() * 12,
@@ -625,7 +654,15 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 		};
 		smokeAccF = emitSmoke('front', frontSlipRatio, simFrontSlip, smokeAccF);
 		smokeAccR = emitSmoke('rear', rearSlipRatio, simRearSlip, smokeAccR);
-		smokePuffs = smokePuffs.filter((p) => simTimeS - p.bornS < p.life);
+		const frontSmoking = simFrontSlip || frontSlipRatio > 0.12;
+		const rearSmoking = simRearSlip || rearSlipRatio > 0.12;
+		smokePuffs = smokePuffs
+			.map((p) => {
+				const still = p.end === 'front' ? frontSmoking : rearSmoking;
+				const fade = (!still || simSpeedMs < 0.4) ? 3.2 : 1;
+				return { ...p, ageS: p.ageS + dt * fade };
+			})
+			.filter((p) => p.ageS < p.life);
 
 		const dirMul = viewSide === 'right' ? 1 : -1;
 		frontWheelAngleDeg += dirMul * frontOmega * dt * (180 / Math.PI);
@@ -1051,6 +1088,27 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 							<div class="text-gray-500 text-xs">Rear Torque</div>
 							<div class="text-lg font-bold text-gray-200">{results.rearBrakeTorqueNm.toFixed(1)} Nm</div>
 							<div class="text-gray-500 text-xs">{(results.rearBrakeTorqueNm * 0.7376).toFixed(1)} ft·lbf</div>
+						</div>
+						<div class="bg-gray-800/50 rounded p-2" title="Commanded patch force ÷ (μ_tire × current axle load). 100% is ideal: using all available grip without locking.">
+							<div class="text-gray-500 text-xs">Front traction ⓘ</div>
+							<div class="text-lg font-bold {tractionTone(traction.frontPct, traction.frontLock)}">
+								{traction.frontPct.toFixed(0)}%
+							</div>
+							<div class="text-[11px] {traction.frontLock ? 'text-red-400 font-semibold' : 'text-gray-500'}">
+								{traction.frontLock ? 'of available — LOCKUP' : 'of available traction'}
+							</div>
+						</div>
+						<div class="bg-gray-800/50 rounded p-2" title="Commanded patch force ÷ (μ_tire × current axle load). Over 100% means the rear is asking for more than the contact patch can give.">
+							<div class="text-gray-500 text-xs">Rear traction ⓘ</div>
+							<div class="text-lg font-bold {tractionTone(traction.rearPct, traction.rearLock)}">
+								{traction.rearPct.toFixed(0)}%
+							</div>
+							<div class="text-[11px] {traction.rearLock ? 'text-red-400 font-semibold' : 'text-gray-500'}">
+								{traction.rearLock ? 'of available — LOCKUP' : 'of available traction'}
+							</div>
+						</div>
+						<div class="col-span-2 text-[11px] text-gray-600 px-1">
+							Ideal: front 100% · rear 100% of available traction
 						</div>
 						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Front Patch Force</div>

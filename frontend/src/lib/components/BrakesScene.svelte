@@ -31,7 +31,7 @@
 		rearSlipRatio = 0,
 		frontWheelState = 'rolling' as WheelGripState,
 		rearWheelState = 'rolling' as WheelGripState,
-		smokePuffs = [] as { id: number; bornS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[],
+		smokePuffs = [] as { id: number; ageS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[],
 		simDistanceM = 0,
 		frontRotorKJ = 0,
 		rearRotorKJ = 0,
@@ -63,7 +63,7 @@
 		rearSlipRatio?: number;
 		frontWheelState?: WheelGripState;
 		rearWheelState?: WheelGripState;
-		smokePuffs?: { id: number; bornS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[];
+		smokePuffs?: { id: number; ageS: number; life: number; rise: number; size: number; jx: number; end: 'front' | 'rear' }[];
 		simDistanceM?: number;
 		frontRotorKJ?: number;
 		rearRotorKJ?: number;
@@ -477,7 +477,7 @@
 
 	<!-- Lockup smoke: short fading puffs at the contact patch (bike-fixed camera) -->
 	{#each smokePuffs as p (p.id)}
-		{@const t = Math.min(1, Math.max(0, (simTimeS - p.bornS) / Math.max(0.15, p.life)))}
+		{@const t = Math.min(1, Math.max(0, p.ageS / Math.max(0.15, p.life)))}
 		{@const axle = p.end === 'front' ? frontAxleS : rearAxleS}
 		{@const dir = viewSide === 'right' ? -1 : 1}
 		{@const cx = axle.x + dir * t * 46 + p.jx}

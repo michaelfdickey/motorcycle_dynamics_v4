@@ -3,6 +3,7 @@
 	import { buildFrontEndVisual, visualParamsFromDesign } from '$lib/frontEndVisual';
 	import type { BrakeParams, BrakingResults, VehicleParams, WheelGripState } from '$lib/braking';
 	import BrakeRotor from './BrakeRotor.svelte';
+	import { thrustDirection, type ExperimentalComponent } from '$lib/experimental';
 
 	let {
 		bike,
@@ -36,6 +37,8 @@
 		frontRotorKJ = 0,
 		rearRotorKJ = 0,
 		initialSpeedKph = 100,
+		showHud = true,
+		experimental = [] as ExperimentalComponent[],
 	}: {
 		bike: AssembledBike;
 		vehicle: VehicleParams;
@@ -68,6 +71,8 @@
 		frontRotorKJ?: number;
 		rearRotorKJ?: number;
 		initialSpeedKph?: number;
+		showHud?: boolean;
+		experimental?: ExperimentalComponent[];
 	} = $props();
 
 	const svgWidth = 1000;
@@ -492,6 +497,29 @@
 		{/if}
 	{/each}
 
+	<!-- Experimental thrusters -->
+	{#each experimental as c (c.id)}
+		{#if c.enabled && c.kind === 'force' && c.forceType === 'thruster' && c.thrustN > 1}
+			{@const attach = c.anchor === 'front_axle' ? frontAxleS : c.anchor === 'rear_axle' ? rearAxleS : cogP}
+			{@const ang = (viewSide === 'left' ? -1 : 1) * c.directionDeg}
+			{@const dir = thrustDirection(ang)}
+			{@const sx = dir.x}
+			{@const sy = -dir.y}
+			{@const len = Math.min(90, Math.max(22, 18 + c.thrustN * scale * 0.04))}
+			{@const x2 = attach.x + sx * len}
+			{@const y2 = attach.y + sy * len}
+			<line x1={attach.x} y1={attach.y} x2={x2} y2={y2} stroke="#22d3ee" stroke-width="2.2" opacity="0.95" />
+			<polygon
+				points={`${x2},${y2} ${x2 - sx * 10 - sy * 5},${y2 - sy * 10 + sx * 5} ${x2 - sx * 10 + sy * 5},${y2 - sy * 10 - sx * 5}`}
+				fill="#22d3ee"
+			/>
+			<circle cx={attach.x} cy={attach.y} r="5" fill="#0e7490" stroke="#67e8f9" stroke-width="1.2" />
+			<text x={x2 + sx * 10} y={y2 + sy * 10} fill="#67e8f9" font-size="9" text-anchor="middle">
+				{Math.round(c.thrustN)} N
+			</text>
+		{/if}
+	{/each}
+
 	<!-- CoG (pitches with chassis) -->
 	<circle cx={cogP.x} cy={cogP.y} r="6" fill="#f97316" opacity="0.9" />
 	<text x={cogP.x + 10} y={cogP.y - 5} fill="#f97316" font-size="10">CoG</text>
@@ -507,7 +535,7 @@
 		WB: {Math.round(bike.wheelbaseMm)}mm ({(bike.wheelbaseMm / 25.4).toFixed(1)}")
 	</text>
 
-	{#if simRunning || simTimeS > 0}
+	{#if showHud && (simRunning || simTimeS > 0)}
 		{@const extra = (frontSlip || rearSlip || frontSlipRatio > 0.08 || rearSlipRatio > 0.08) ? 36 : 0}
 		<rect x="8" y="8" width="268" height={85 + extra} rx="4" fill="#000" opacity="0.6" />
 		<text x="15" y="26" fill="#e5e7eb" font-size="12" font-family="monospace">

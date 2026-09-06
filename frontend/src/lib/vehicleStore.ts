@@ -16,7 +16,9 @@ export interface VehicleDesign {
 	rearEnd?: Record<string, unknown>;
 	suspension?: Record<string, unknown>;
 	frame?: Record<string, unknown>;
-	// Future tabs added here
+	experimental?: {
+		components: Record<string, unknown>[];
+	};
 }
 
 const STORAGE_KEY = 'motorcycle_vehicle_name';

@@ -69,6 +69,10 @@ export interface BrakingInputs {
 	rearPedalForceN: number;    // foot force on rear brake pedal
 	linked: boolean;            // linked braking system
 	linkRatio: number;          // front:rear ratio when linked (0-1, 1=all front)
+	/** Optional experimental body forces (thrusters, later aero). */
+	experimentalForwardN?: number;
+	experimentalFrontLoadN?: number;
+	experimentalRearLoadN?: number;
 }
 
 export interface BrakingResults {
@@ -92,6 +96,9 @@ export interface BrakingResults {
 	// Stopping
 	stoppingDistanceM: number;  // from given speed
 	stoppingTimeS: number;
+
+	/** Net experimental long force, +forward. Rearward thrust increases deceleration. */
+	experimentalForwardN: number;
 }
 
 export interface BrakeSimFrame {
@@ -172,8 +179,10 @@ export function computeBraking(inputs: BrakingInputs): BrakingResults {
 
 	const limited = solveGripLimited(vehicle, frontForceCmd, rearForceCmd);
 
+	const expF = inputs.experimentalForwardN ?? 0;
+	const m = Math.max(40, vehicle.totalMassKg);
+	const a = limited.decelerationMs2 - expF / m;
 	const v0 = 100 / 3.6;
-	const a = limited.decelerationMs2;
 	const stoppingTimeS = a > 0.05 ? v0 / a : Infinity;
 	const stoppingDistanceM = a > 0.05 ? (v0 * v0) / (2 * a) : Infinity;
 
@@ -187,12 +196,13 @@ export function computeBraking(inputs: BrakingInputs): BrakingResults {
 		decelerationG: a / G,
 		decelerationMs2: a,
 		weightTransferN: limited.weightTransferN,
-		frontAxleLoadN: limited.frontAxleLoadN,
-		rearAxleLoadN: limited.rearAxleLoadN,
+		frontAxleLoadN: limited.frontAxleLoadN + (inputs.experimentalFrontLoadN ?? 0),
+		rearAxleLoadN: limited.rearAxleLoadN + (inputs.experimentalRearLoadN ?? 0),
 		frontLockup: limited.frontLockup,
 		rearLockup: limited.rearLockup,
 		stoppingDistanceM,
 		stoppingTimeS,
+		experimentalForwardN: expF,
 	};
 }
 
@@ -501,6 +511,10 @@ export function stepLongitudinalBraking(
 		frontInertia: number;
 		rearInertia: number;
 		dt: number;
+		/** +forward body force (thruster). Rearward is negative and adds deceleration. */
+		externalForwardN?: number;
+		extraFrontLoadN?: number;
+		extraRearLoadN?: number;
 	},
 ): LongBrakingState {
 	const { vehicle, dt } = opts;
@@ -510,14 +524,17 @@ export function stepLongitudinalBraking(
 	const staticLoads = staticAxleLoads(vehicle);
 	const rF = vehicle.frontTireRadiusMm / 1000;
 	const rR = vehicle.rearTireRadiusMm / 1000;
+	const extF = opts.externalForwardN ?? 0;
+	const extraF = opts.extraFrontLoadN ?? 0;
+	const extraR = opts.extraRearLoadN ?? 0;
 
-	let a = Math.max(0, state.decelMs2);
+	let aTires = Math.max(0, state.decelMs2 + extF / m);
 	let front!: WheelStep;
 	let rear!: WheelStep;
 	for (let k = 0; k < 3; k++) {
-		const wt = (m * a * h) / L;
-		const Nf = Math.max(40, staticLoads.frontN + wt);
-		const Nr = Math.max(0, staticLoads.rearN - wt);
+		const wt = (m * aTires * h) / L;
+		const Nf = Math.max(40, staticLoads.frontN + wt + extraF);
+		const Nr = Math.max(0, staticLoads.rearN - wt + extraR);
 		front = stepWheel({
 			omega: state.frontOmega, speedMs: state.speedMs, radiusM: rF,
 			inertia: opts.frontInertia, brakeTorqueNm: opts.frontBrakeTorqueNm,
@@ -528,35 +545,37 @@ export function stepLongitudinalBraking(
 			inertia: opts.rearInertia, brakeTorqueNm: opts.rearBrakeTorqueNm,
 			loadN: Nr, muPeak: vehicle.rearTireGrip, dt,
 		});
-		a = (front.tireForceN + rear.tireForceN) / m;
+		aTires = (front.tireForceN + rear.tireForceN) / m;
 	}
 
-	const wt = (m * a * h) / L;
+	const a = aTires - extF / m;
+	const wt = (m * aTires * h) / L;
 	let speedMs = Math.max(0, state.speedMs - a * dt);
 	let fOmega = front.omega;
 	let rOmega = rear.omega;
 	let fLocked = front.locked;
 	let rLocked = rear.locked;
-	if (speedMs < 0.15 && (opts.frontBrakeTorqueNm + opts.rearBrakeTorqueNm) > 1) {
+	const brakingHard = (opts.frontBrakeTorqueNm + opts.rearBrakeTorqueNm) > 1 && a > 0.2;
+	if (speedMs < 0.15 && brakingHard) {
 		speedMs = 0;
 		fOmega = 0;
 		rOmega = 0;
 	}
-	if (speedMs < 0.05) {
+	if (speedMs < 0.05 && a >= 0) {
 		speedMs = 0;
 		fOmega = 0;
 		rOmega = 0;
 		fLocked = false;
 		rLocked = false;
 	}
-	const stopped = speedMs < 0.15;
+	const stopped = speedMs < 0.15 && a >= 0;
 	return {
 		speedMs,
 		frontOmega: fOmega,
 		rearOmega: rOmega,
 		decelMs2: a,
-		frontLoadN: Math.max(40, staticLoads.frontN + wt),
-		rearLoadN: Math.max(0, staticLoads.rearN - wt),
+		frontLoadN: Math.max(40, staticLoads.frontN + wt + extraF),
+		rearLoadN: Math.max(0, staticLoads.rearN - wt + extraR),
 		frontSlip: stopped ? 0 : front.slip,
 		rearSlip: stopped ? 0 : rear.slip,
 		frontLocked: fLocked && !stopped,

@@ -31,6 +31,11 @@
 		type EndGeometry,
 	} from '$lib/suspension';
 	import { buildFrontEndVisual, visualParamsFromDesign, shockLengthMm } from '$lib/frontEndVisual';
+	import {
+		migrateExperimental,
+		resolveExperimentalForces,
+		type ExperimentalComponent,
+	} from '$lib/experimental';
 
 	// ── Unit conversion helpers ──
 	const MM_PER_INCH = 25.4;
@@ -53,6 +58,21 @@
 	let saveStatus = $state<'' | 'saving' | 'saved' | 'error'>('');
 	let loadModalVisible = $state(false);
 	let viewSide = $state<'right' | 'left'>('right');
+	let experimental = $state<ExperimentalComponent[]>([]);
+
+	const SIM_MODES = [
+		{ id: 'braking', label: 'Braking', blurb: 'From a set speed, apply the brakes. Tire grip, dive, lockup, and any experimental thrusters all act together.' },
+		{ id: 'acceleration', label: 'Acceleration', blurb: 'Launch and drive-torque tests. Not wired yet — a forward thruster on the Experimental tab already adds a body force you can see in a braking run.' },
+		{ id: 'suspension', label: 'Suspension', blurb: 'Bump, rebound, and active-damper tests. Not wired yet. Catalog an active-suspension system on the Experimental tab when you are ready.' },
+	] as const;
+	type SimModeId = typeof SIM_MODES[number]['id'];
+	let simMode = $state<SimModeId>('braking');
+	const simModeMeta = $derived(SIM_MODES.find((m) => m.id === simMode) ?? SIM_MODES[0]);
+
+	function cycleSimMode(dir: 1 | -1) {
+		const i = SIM_MODES.findIndex((m) => m.id === simMode);
+		simMode = SIM_MODES[(i + dir + SIM_MODES.length) % SIM_MODES.length].id;
+	}
 
 	async function refreshVehicleList() {
 		savedVehicles = await listVehicles();
@@ -72,6 +92,9 @@
 				frontBrake: { ...frontBrake },
 				rearBrake: { ...rearBrake },
 				vehicle: { ...vehicle },
+			},
+			experimental: {
+				components: experimental.map((c) => ({ ...c })),
 			},
 		};
 		const ok = await saveVehicleDesign(design);
@@ -101,6 +124,7 @@
 			frontBrake = defaultFrontBrake();
 			rearBrake = defaultRearBrake();
 		}
+		experimental = migrateExperimental(design.experimental?.components);
 		const assembled = assembleBike(design, vehicle);
 		vehicle = applyAssemblyToVehicle(vehicle, assembled);
 		loadModalVisible = false;
@@ -119,6 +143,7 @@
 	let vehicle = $state<VehicleParams>(defaultVehicleParams());
 	let loadedDesign = $state<VehicleDesign | null>(null);
 	const bike = $derived(assembleBike(loadedDesign, vehicle));
+	const expForces = $derived(resolveExperimentalForces(experimental, vehicle));
 
 	const dive = $derived.by(() => {
 		if (!bike.front) return null;
@@ -235,6 +260,16 @@
 				}
 			}
 			vehicle = applyAssemblyToVehicle(vehicle, assembleBike(design, vehicle));
+			experimental = migrateExperimental(design.experimental?.components);
+			if (experimental.length === 0) {
+				try {
+					const raw = localStorage.getItem('mototelos_experimental_session');
+					if (raw) {
+						const s = JSON.parse(raw);
+						if (Array.isArray(s.components)) experimental = migrateExperimental(s.components);
+					}
+				} catch { /* ignore */ }
+			}
 		})();
 	}
 
@@ -430,6 +465,9 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			rearPedalForceN: effectiveRear,
 			linked,
 			linkRatio,
+			experimentalForwardN: expForces.forwardN,
+			experimentalFrontLoadN: expForces.dFrontN,
+			experimentalRearLoadN: expForces.dRearN,
 		});
 	});
 
@@ -578,6 +616,9 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			frontLeverForceN: effectiveFront,
 			rearPedalForceN: effectiveRear,
 			linked, linkRatio,
+			experimentalForwardN: expForces.forwardN,
+			experimentalFrontLoadN: expForces.dFrontN,
+			experimentalRearLoadN: expForces.dRearN,
 		});
 
 		let phys: LongBrakingState = {
@@ -606,6 +647,9 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 				frontInertia: Ifront,
 				rearInertia: Irear,
 				dt: h,
+				externalForwardN: expForces.forwardN,
+				extraFrontLoadN: expForces.dFrontN,
+				extraRearLoadN: expForces.dRearN,
 			});
 		}
 
@@ -797,7 +841,7 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 	<div class="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
 		<h2 class="text-2xl font-bold whitespace-nowrap">Simulation</h2>
 		<p class="text-xs text-gray-500 hidden md:block max-w-xl">
-			Run the saved frame, suspension, and brake hardware. Edit discs and calipers on the Brakes tab.
+			Run braking, acceleration, and suspension tests. Cycle modes with the arrows beside the control bar. Experimental thrusters live on the Experimental tab.
 		</p>
 		<div class="ml-auto flex items-center gap-2">
 			<input type="text" bind:value={vehicleName}
@@ -845,140 +889,176 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 						{feedbackLoading ? '⏳ Analyzing...' : '💡 Feedback'}
 					</button>
 				</div>
-				<div class="flex-1 min-h-[50vh] lg:min-h-0 overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
-				<BrakesScene
-					{bike}
-					{vehicle}
-					{frontBrake}
-					{rearBrake}
-					{viewSide}
-					pitchDeg={0}
-					frontCompressionPct={simFrontPct}
-					frontBottomed={simFrontBottomed}
-					{frontWheelAngleDeg}
-					{rearWheelAngleDeg}
-					{farBgOffset}
-					{nearBgOffset}
-					{roadOffset}
-					{results}
-					{simRunning}
-					{simTimeS}
-					{simSpeedMs}
-					{simDistanceM}
-					{peakDecelG}
-					{brakingDistanceM}
-					{brakingTimeS}
-					frontSlip={simFrontSlip}
-					rearSlip={simRearSlip}
-					{frontSlipRatio}
-					{rearSlipRatio}
-					{frontWheelState}
-					{rearWheelState}
-					{smokePuffs}
-					{frontRotorKJ}
-					{rearRotorKJ}
-					{initialSpeedKph}
-				/>
-				</div>
-			</section>
-
-			<!-- Simulation controls — single compact row -->
-			<section class="shrink-0 rounded-xl border border-gray-800 bg-gray-900 p-3">
-				<div class="flex flex-wrap items-center gap-2">
-					<!-- Speed input -->
-					<label class="text-xs text-gray-400">
-						<input type="number" bind:value={initialSpeedKph} min="10" max="300" step="5"
-							class="w-14 rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-xs text-gray-100" />
-						<span class="text-[10px] text-gray-500">km/h</span>
-					</label>
-
-					<!-- Transport controls -->
-					<button onclick={startSimulation}
-						class="px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium transition-colors">
-						▶ Start
-					</button>
-					<button onclick={pauseSimulation} disabled={!simRunning}
-						class="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors disabled:opacity-40">
-						{simPaused ? '▶ Resume' : '⏸ Pause'}
-					</button>
-					<button onclick={resetSimulation}
-						class="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors">
-						⏹ Reset
-					</button>
-
-					<span class="border-l border-gray-700 h-6"></span>
-
-					<!-- Brake mode selection -->
-					<button onclick={() => { brakeMode = 'front'; }}
-						class="px-2 py-1 rounded text-xs font-medium transition-colors
-						{brakeMode === 'front' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
-						Front
-					</button>
-					<button onclick={() => { brakeMode = 'rear'; }}
-						class="px-2 py-1 rounded text-xs font-medium transition-colors
-						{brakeMode === 'rear' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
-						Rear
-					</button>
-					<button onclick={() => { brakeMode = 'both'; }}
-						class="px-2 py-1 rounded text-xs font-medium transition-colors
-						{brakeMode === 'both' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
-						Both
-					</button>
-
-					<span class="border-l border-gray-700 h-6"></span>
-
-					<!-- APPLY BRAKES button -->
-					<button onclick={applyBrakes} disabled={!simRunning || brakesApplied}
-						class="px-4 py-1.5 rounded text-xs font-bold transition-colors
-						{brakesApplied ? 'bg-red-900 text-red-300 ring-1 ring-red-500' : 'bg-red-700 hover:bg-red-600 text-white'}
-						disabled:opacity-40">
-						{brakesApplied ? '🛑 Braking' : '🛑 Apply Brakes'}
-					</button>
-
-					<!-- Linked option -->
-					<label class="flex items-center gap-1 text-xs text-gray-400 ml-2">
-						<input type="checkbox" bind:checked={linked}
-							class="rounded border-gray-600 bg-gray-800 w-3 h-3" />
-						Linked
-					</label>
-					{#if linked}
-						<input type="number" bind:value={linkRatio} min="0" max="1" step="0.05"
-							class="w-12 rounded bg-gray-800 border border-gray-700 px-1 py-0.5 text-xs text-gray-100" />
+				<div class="relative flex-1 min-h-0 overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
+					{#if simRunning || simTimeS > 0}
+						<div class="absolute top-2 left-2 z-10 pointer-events-none rounded-md bg-black/65 px-2.5 py-2 font-mono text-[11px] leading-4 text-gray-100">
+							<div>Speed: {(simSpeedMs * 3.6).toFixed(1)} km/h ({(simSpeedMs * 2.237).toFixed(1)} mph)</div>
+							{#if simMode === 'braking'}
+								<div>Peak Decel: {peakDecelG.toFixed(2)} G</div>
+								<div>Stop Dist: {brakingDistanceM.toFixed(1)} m ({(brakingDistanceM * 3.281).toFixed(1)} ft)</div>
+								<div>Brake Time: {brakingTimeS.toFixed(2)} s</div>
+							{:else}
+								<div>Mode: {simModeMeta.label}</div>
+							{/if}
+							{#if Math.abs(expForces.forwardN) > 1}
+								<div class="text-cyan-300">Thruster: {expForces.forwardN.toFixed(0)} N {expForces.forwardN >= 0 ? 'fwd' : 'aft'}</div>
+							{/if}
+							{#if simFrontSlip || simRearSlip || frontSlipRatio > 0.08 || rearSlipRatio > 0.08}
+								<div class={simFrontSlip ? 'text-red-400' : frontSlipRatio > 0.12 ? 'text-amber-300' : 'text-gray-400'}>
+									F {simFrontSlip ? 'LOCKED' : frontWheelState} · slip {(frontSlipRatio * 100).toFixed(0)}%
+								</div>
+								<div class={simRearSlip ? 'text-red-400' : rearSlipRatio > 0.12 ? 'text-amber-300' : 'text-gray-400'}>
+									R {simRearSlip ? 'LOCKED' : rearWheelState} · slip {(rearSlipRatio * 100).toFixed(0)}%
+								</div>
+							{/if}
+						</div>
 					{/if}
-				</div>
-
-				<!-- Lever force sliders: full-width, 1 N steps -->
-				<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-					<label class="block {brakeMode === 'rear' ? 'opacity-40' : ''}">
-						<div class="flex items-center justify-between gap-2 mb-1">
-							<span class="text-xs text-gray-400">Front lever</span>
-							<div class="flex items-center gap-1.5">
-								<input type="number" bind:value={frontLeverForceN} min="0" max="400" step="1"
-									disabled={brakeMode === 'rear'}
-									class="w-16 rounded bg-gray-800 border border-gray-700 px-1.5 py-0.5 text-xs text-gray-100 text-right font-mono" />
-								<span class="text-[10px] text-gray-500 w-6">N</span>
-								<span class="text-[10px] text-gray-600 font-mono w-14 text-right">{nToLbf(frontLeverForceN).toFixed(1)} lbf</span>
-							</div>
-						</div>
-						<input type="range" bind:value={frontLeverForceN} min="0" max="400" step="1"
-							class="brake-slider w-full" disabled={brakeMode === 'rear'} />
-					</label>
-					<label class="block {brakeMode === 'front' ? 'opacity-40' : ''}">
-						<div class="flex items-center justify-between gap-2 mb-1">
-							<span class="text-xs text-gray-400">Rear pedal</span>
-							<div class="flex items-center gap-1.5">
-								<input type="number" bind:value={rearPedalForceN} min="0" max="300" step="1"
-									disabled={brakeMode === 'front'}
-									class="w-16 rounded bg-gray-800 border border-gray-700 px-1.5 py-0.5 text-xs text-gray-100 text-right font-mono" />
-								<span class="text-[10px] text-gray-500 w-6">N</span>
-								<span class="text-[10px] text-gray-600 font-mono w-14 text-right">{nToLbf(rearPedalForceN).toFixed(1)} lbf</span>
-							</div>
-						</div>
-						<input type="range" bind:value={rearPedalForceN} min="0" max="300" step="1"
-							class="brake-slider w-full" disabled={brakeMode === 'front'} />
-					</label>
+					<BrakesScene
+						{bike}
+						{vehicle}
+						{frontBrake}
+						{rearBrake}
+						{viewSide}
+						pitchDeg={0}
+						frontCompressionPct={simFrontPct}
+						frontBottomed={simFrontBottomed}
+						{frontWheelAngleDeg}
+						{rearWheelAngleDeg}
+						{farBgOffset}
+						{nearBgOffset}
+						{roadOffset}
+						{results}
+						{simRunning}
+						{simTimeS}
+						{simSpeedMs}
+						{simDistanceM}
+						{peakDecelG}
+						{brakingDistanceM}
+						{brakingTimeS}
+						frontSlip={simFrontSlip}
+						rearSlip={simRearSlip}
+						{frontSlipRatio}
+						{rearSlipRatio}
+						{frontWheelState}
+						{rearWheelState}
+						{smokePuffs}
+						{frontRotorKJ}
+						{rearRotorKJ}
+						{initialSpeedKph}
+						showHud={false}
+						{experimental}
+					/>
 				</div>
 			</section>
+
+			<div class="shrink-0 flex items-stretch gap-2">
+				<button type="button" onclick={() => cycleSimMode(-1)}
+					class="w-12 shrink-0 rounded-xl border border-gray-700 bg-gray-900 hover:bg-gray-800 text-2xl text-gray-300"
+					title="Previous simulation test">◀</button>
+
+				<section class="min-w-0 flex-1 rounded-xl border border-gray-800 bg-gray-900 p-3">
+					<div class="flex items-baseline justify-between gap-3 mb-2 min-h-[1.25rem]" title={simModeMeta.blurb}>
+						<span class="text-sm font-semibold text-orange-400 uppercase tracking-wide">{simModeMeta.label}</span>
+						{#if simMode === 'braking' && experimental.some((c) => c.enabled && c.forceType === 'thruster')}
+							<span class="text-[11px] text-cyan-400 font-mono">
+								{experimental.filter((c) => c.enabled && c.forceType === 'thruster').length} thruster(s)
+								· {expForces.forwardN.toFixed(0)} N {expForces.forwardN >= 0 ? 'fwd' : 'aft'}
+							</span>
+						{/if}
+					</div>
+					{#if simMode === 'braking'}
+						<div class="flex flex-wrap items-center gap-2">
+							<label class="text-xs text-gray-400">
+								<input type="number" bind:value={initialSpeedKph} min="10" max="300" step="5"
+									class="w-14 rounded bg-gray-800 border border-gray-700 px-1.5 py-1 text-xs text-gray-100" />
+								<span class="text-[10px] text-gray-500">km/h</span>
+							</label>
+							<button onclick={startSimulation}
+								class="px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium transition-colors">
+								▶ Start
+							</button>
+							<button onclick={pauseSimulation} disabled={!simRunning}
+								class="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors disabled:opacity-40">
+								{simPaused ? '▶ Resume' : '⏸ Pause'}
+							</button>
+							<button onclick={resetSimulation}
+								class="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition-colors">
+								⏹ Reset
+							</button>
+							<span class="border-l border-gray-700 h-6"></span>
+							<button onclick={() => { brakeMode = 'front'; }}
+								class="px-2 py-1 rounded text-xs font-medium transition-colors
+								{brakeMode === 'front' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
+								Front
+							</button>
+							<button onclick={() => { brakeMode = 'rear'; }}
+								class="px-2 py-1 rounded text-xs font-medium transition-colors
+								{brakeMode === 'rear' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
+								Rear
+							</button>
+							<button onclick={() => { brakeMode = 'both'; }}
+								class="px-2 py-1 rounded text-xs font-medium transition-colors
+								{brakeMode === 'both' ? 'bg-gray-600 text-white ring-1 ring-gray-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">
+								Both
+							</button>
+							<span class="border-l border-gray-700 h-6"></span>
+							<button onclick={applyBrakes} disabled={!simRunning || brakesApplied}
+								class="px-4 py-1.5 rounded text-xs font-bold transition-colors
+								{brakesApplied ? 'bg-red-900 text-red-300 ring-1 ring-red-500' : 'bg-red-700 hover:bg-red-600 text-white'}
+								disabled:opacity-40">
+								{brakesApplied ? '🛑 Braking' : '🛑 Apply Brakes'}
+							</button>
+							<label class="flex items-center gap-1 text-xs text-gray-400 ml-2">
+								<input type="checkbox" bind:checked={linked}
+									class="rounded border-gray-600 bg-gray-800 w-3 h-3" />
+								Linked
+							</label>
+							{#if linked}
+								<input type="number" bind:value={linkRatio} min="0" max="1" step="0.05"
+									class="w-12 rounded bg-gray-800 border border-gray-700 px-1 py-0.5 text-xs text-gray-100" />
+							{/if}
+						</div>
+						<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+							<label class="block {brakeMode === 'rear' ? 'opacity-40' : ''}">
+								<div class="flex items-center justify-between gap-2 mb-1">
+									<span class="text-xs text-gray-400">Front lever</span>
+									<div class="flex items-center gap-1.5">
+										<input type="number" bind:value={frontLeverForceN} min="0" max="400" step="1"
+											disabled={brakeMode === 'rear'}
+											class="w-16 rounded bg-gray-800 border border-gray-700 px-1.5 py-0.5 text-xs text-gray-100 text-right font-mono" />
+										<span class="text-[10px] text-gray-500 w-6">N</span>
+										<span class="text-[10px] text-gray-600 font-mono w-14 text-right">{nToLbf(frontLeverForceN).toFixed(1)} lbf</span>
+									</div>
+								</div>
+								<input type="range" bind:value={frontLeverForceN} min="0" max="400" step="1"
+									class="brake-slider w-full" disabled={brakeMode === 'rear'} />
+							</label>
+							<label class="block {brakeMode === 'front' ? 'opacity-40' : ''}">
+								<div class="flex items-center justify-between gap-2 mb-1">
+									<span class="text-xs text-gray-400">Rear pedal</span>
+									<div class="flex items-center gap-1.5">
+										<input type="number" bind:value={rearPedalForceN} min="0" max="300" step="1"
+											disabled={brakeMode === 'front'}
+											class="w-16 rounded bg-gray-800 border border-gray-700 px-1.5 py-0.5 text-xs text-gray-100 text-right font-mono" />
+										<span class="text-[10px] text-gray-500 w-6">N</span>
+										<span class="text-[10px] text-gray-600 font-mono w-14 text-right">{nToLbf(rearPedalForceN).toFixed(1)} lbf</span>
+									</div>
+								</div>
+								<input type="range" bind:value={rearPedalForceN} min="0" max="300" step="1"
+									class="brake-slider w-full" disabled={brakeMode === 'front'} />
+							</label>
+						</div>
+					{:else if simMode === 'acceleration'}
+						<p class="text-xs text-gray-500">Throttle, launch RPM, and drive torque will live here. A forward vector thruster on Experimental already pushes the bike if you run a braking sim without squeezing the levers.</p>
+					{:else}
+						<p class="text-xs text-gray-500">Bump profile, rebound, and active damper commands will live here. Catalog an active-suspension system on the Experimental tab when you are ready.</p>
+					{/if}
+				</section>
+
+				<button type="button" onclick={() => cycleSimMode(1)}
+					class="w-12 shrink-0 rounded-xl border border-gray-700 bg-gray-900 hover:bg-gray-800 text-2xl text-gray-300"
+					title="Next simulation test">▶</button>
+			</div>
 		</div>
 
 		<!-- RIGHT: vehicle params, results, reports -->
@@ -1056,6 +1136,12 @@ Vehicle & brake parameters:\n${JSON.stringify(snapshot, null, 2)}`;
 			{#if results}
 				<section class="shrink-0 rounded-xl border border-gray-800 bg-gray-900 p-2.5">
 					<h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Braking Results</h3>
+					{#if Math.abs(expForces.forwardN) > 1}
+						<p class="text-[11px] text-cyan-400 mb-2">
+							Experimental body force {expForces.forwardN.toFixed(0)} N {expForces.forwardN >= 0 ? 'forward' : 'rearward'}
+							· ΔN F {expForces.dFrontN.toFixed(0)} / R {expForces.dRearN.toFixed(0)} N
+						</p>
+					{/if}
 					<div class="grid grid-cols-2 gap-1.5 text-sm">
 						<div class="bg-gray-800/50 rounded p-2">
 							<div class="text-gray-500 text-xs">Deceleration</div>

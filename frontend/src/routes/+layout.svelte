@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	let { children } = $props();
 
-	const workspace = ['/frame', '/front-end', '/rear-end', '/suspension', '/brakes', '/simulation'];
+	const workspace = ['/frame', '/front-end', '/rear-end', '/suspension', '/brakes', '/simulation', '/experimental'];
 	const isWorkspace = $derived(workspace.some((p) => page.url.pathname.startsWith(p)));
 
 	const tabs = [

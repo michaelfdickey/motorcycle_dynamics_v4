@@ -1,15 +1,15 @@
 {
   "name": "phase1",
-  "version": 4,
-  "savedAt": "2026-09-03T04:45:50.708Z",
+  "version": 8,
+  "savedAt": "2026-09-06T06:57:15.393Z",
   "brakes": {
     "frontBrake": {
       "discDiameterMm": 279.4,
       "discThicknessMm": 5,
       "pistons": [
         {
-          "count": 2,
-          "diameterMm": 30
+          "count": 4,
+          "diameterMm": 25.4
         }
       ],
       "padCoefficientOfFriction": 0.45,
@@ -17,6 +17,7 @@
       "masterCylinderDiaMm": 16,
       "leverRatio": 4,
       "dualSided": true,
+      "caliperAngleDeg": 50,
       "numberOfPots": 4,
       "pistonDiameterMm": 30
     },
@@ -34,18 +35,19 @@
       "masterCylinderDiaMm": 14,
       "leverRatio": 3,
       "dualSided": false,
+      "caliperAngleDeg": 48,
       "numberOfPots": 3,
       "pistonDiameterMm": 34
     },
     "vehicle": {
-      "wheelbaseMm": 2931.8407686641494,
+      "wheelbaseMm": 2931.553158851584,
       "cogHeightMm": 609.5999999999999,
       "cogPositionPct": 50,
       "totalMassKg": 680.388,
       "frontTireRadiusMm": 320.9,
       "rearTireRadiusMm": 399.4,
-      "frontTireGrip": 1.2,
-      "rearTireGrip": 1.1
+      "frontTireGrip": 0.9,
+      "rearTireGrip": 0.9
     }
   },
   "frontEnd": {
@@ -619,5 +621,39 @@
       "targetRiderSagPct": 28,
       "targetStaticSagPct": 8
     }
+  },
+  "experimental": {
+    "components": [
+      {
+        "id": "thr_7wqmgy_mtpg4buo",
+        "name": "Rear thruster",
+        "enabled": true,
+        "kind": "force",
+        "forceMode": "active",
+        "forceType": "thruster",
+        "systemType": "active_suspension",
+        "anchor": "rear_axle",
+        "thrustN": 889.644,
+        "directionDeg": 229,
+        "areaM2": 0,
+        "cl": 0,
+        "cd": 0
+      },
+      {
+        "id": "thr_lx2tzh_mtpg53iw",
+        "name": "Front thruster",
+        "enabled": true,
+        "kind": "force",
+        "forceMode": "active",
+        "forceType": "thruster",
+        "systemType": "active_suspension",
+        "anchor": "front_axle",
+        "thrustN": 889.644,
+        "directionDeg": 216,
+        "areaM2": 0,
+        "cl": 0,
+        "cd": 0
+      }
+    ]
   }
 }

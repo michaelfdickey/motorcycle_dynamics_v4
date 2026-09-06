@@ -193,12 +193,12 @@
 
 <g class="brake-rotor">
 	<g transform="rotate({rotorAngleDeg} {cx} {cy})">
-		<path d={rotor.d} fill="#ea580c" fill-rule="evenodd" opacity="0.55" />
-		<circle cx={cx} cy={cy} r={discR} fill="none" stroke="#f97316" stroke-width={sw * 1.5} opacity="0.95" />
-		<circle cx={cx} cy={cy} r={rotor.trackInner} fill="none" stroke="#fb923c" stroke-width={sw * 0.7} opacity="0.7" />
-		<circle cx={cx} cy={cy} r={rotor.hatInner} fill="none" stroke="#fdba74" stroke-width={sw * 0.55} opacity="0.55" />
+		<path d={rotor.d} fill="#ea580c" fill-rule="evenodd" opacity="0.28" />
+		<circle cx={cx} cy={cy} r={discR} fill="none" stroke="#f97316" stroke-width={sw * 1.5} opacity="0.48" />
+		<circle cx={cx} cy={cy} r={rotor.trackInner} fill="none" stroke="#fb923c" stroke-width={sw * 0.7} opacity="0.35" />
+		<circle cx={cx} cy={cy} r={rotor.hatInner} fill="none" stroke="#fdba74" stroke-width={sw * 0.55} opacity="0.28" />
 		{#each rotor.buttons as b}
-			<circle cx={b.x} cy={b.y} r={b.r} fill="#c2410c" stroke="#9a3412" stroke-width={sw * 0.35} />
+			<circle cx={b.x} cy={b.y} r={b.r} fill="#c2410c" stroke="#9a3412" stroke-width={sw * 0.35} opacity="0.5" />
 		{/each}
 	</g>
 

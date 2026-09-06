@@ -2,7 +2,7 @@
 	import { applySit, undoSit, computeGroundSit, type AssembledBike, type Pt } from '$lib/bikeAssembly';
 	import { buildFrontEndVisual, visualParamsFromDesign } from '$lib/frontEndVisual';
 	import type { BrakeParams, BrakingResults, VehicleParams, WheelGripState } from '$lib/braking';
-	import { totalPotCount } from '$lib/braking';
+	import BrakeRotor from './BrakeRotor.svelte';
 
 	let {
 		bike,
@@ -194,8 +194,6 @@
 	const rearR = $derived(bike.rearTire.outerRadiusMm * scale);
 	const frontRimR = $derived(bike.frontTire.rimRadiusMm * scale);
 	const rearRimR = $derived(bike.rearTire.rimRadiusMm * scale);
-	const frontDiscR = $derived(Math.min(frontR * 0.92, (frontBrake.discDiameterMm / 2) * scale));
-	const rearDiscR = $derived(Math.min(rearR * 0.92, (rearBrake.discDiameterMm / 2) * scale));
 
 	function spokes(cx: number, cy: number, r: number, angleDeg: number): string[] {
 		const lines: string[] = [];
@@ -281,29 +279,32 @@
 
 	<!-- Unsprung: wheels, tires, rotors, calipers -->
 	{#each [
-		{ axle: frontAxleS, r: frontR, rim: frontRimR, disc: frontDiscR, ang: frontWheelAngleDeg, brake: frontBrake, pots: totalPotCount(frontBrake.pistons), dual: frontBrake.dualSided, kJ: frontRotorKJ, color: '#f97316' },
-		{ axle: rearAxleS, r: rearR, rim: rearRimR, disc: rearDiscR, ang: rearWheelAngleDeg, brake: rearBrake, pots: totalPotCount(rearBrake.pistons), dual: rearBrake.dualSided, kJ: rearRotorKJ, color: '#22d3ee' },
+		{ axle: frontAxleS, r: frontR, rim: frontRimR, ang: frontWheelAngleDeg, brake: frontBrake, dual: frontBrake.dualSided, kJ: frontRotorKJ, color: '#f97316', tireMm: bike.frontTire.outerRadiusMm, slip: frontSlip },
+		{ axle: rearAxleS, r: rearR, rim: rearRimR, ang: rearWheelAngleDeg, brake: rearBrake, dual: rearBrake.dualSided, kJ: rearRotorKJ, color: '#22d3ee', tireMm: bike.rearTire.outerRadiusMm, slip: rearSlip },
 	] as w}
-		{@const calW = Math.max(8, 12 * scale * 4)}
-		{@const calH = Math.max(10, 16 * scale * 4)}
-		{@const calX = viewSide === 'right' ? w.axle.x - w.disc - calW * 0.35 : w.axle.x + w.disc - calW * 0.65}
 		<circle cx={w.axle.x} cy={w.axle.y} r={(w.r + w.rim) / 2} fill="none" stroke="#64748b" stroke-width={Math.max(3, w.r - w.rim)} opacity="0.35" />
 		<circle cx={w.axle.x} cy={w.axle.y} r={w.r} fill="none" stroke="#d4d4d8" stroke-width="1.8" />
 		<circle cx={w.axle.x} cy={w.axle.y} r={w.rim} fill="none" stroke="#94a3b8" stroke-width="1.2" />
 		{#each spokes(w.axle.x, w.axle.y, w.rim, w.ang) as d}
 			<path {d} stroke="#78716c" stroke-width="1.2" fill="none" />
 		{/each}
-		<circle cx={w.axle.x} cy={w.axle.y} r={w.disc} fill="none" stroke="#ef4444" stroke-width="2.4" opacity="0.9" />
-		<circle cx={w.axle.x} cy={w.axle.y} r={Math.max(4, w.disc * 0.22)} fill="none" stroke="#ef4444" stroke-width="1" opacity="0.5" />
-		<rect x={calX} y={w.axle.y - calH / 2} width={calW} height={calH} rx="2" fill="#ef4444" opacity="0.7" />
+		<BrakeRotor
+			cx={w.axle.x}
+			cy={w.axle.y}
+			discDiameterMm={w.brake.discDiameterMm}
+			tireOuterMm={w.tireMm}
+			pistons={w.brake.pistons}
+			dualSided={w.dual}
+			caliperAngleDeg={(viewSide === 'left' ? -1 : 1) * (w.brake.caliperAngleDeg ?? 90)}
+			rotorAngleDeg={w.ang}
+			{scale}
+			sw={Math.max(0.9, 1.6 * scale)}
+		/>
 		<circle cx={w.axle.x} cy={w.axle.y} r="3.5" fill={w.color} />
-		{#if (w.color === '#f97316' && frontSlip) || (w.color === '#22d3ee' && rearSlip)}
+		{#if w.slip}
 			<ellipse cx={w.axle.x} cy={groundY} rx={Math.max(10, w.r * 0.22)} ry={4}
 				fill="#9ca3af" opacity="0.35" />
 		{/if}
-		<text x={w.axle.x} y={w.axle.y - w.r - 14} fill="#ef4444" font-size="9" text-anchor="middle">
-			Ø{Math.round(w.brake.discDiameterMm)} / {w.pots}-pot
-		</text>
 		{#if results && (results.frontBrakeForceN + results.rearBrakeForceN) > 0}
 			<title>Peak thermal energy absorbed per rotor during a full stop from {initialSpeedKph} km/h</title>
 			<text x={w.axle.x} y={w.axle.y - w.r - 26} fill="#fbbf24" font-size="9" text-anchor="middle">

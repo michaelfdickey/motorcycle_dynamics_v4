@@ -298,6 +298,8 @@
 							brakeDiscDiameterMm={frontBrake.discDiameterMm}
 							brakeDualSided={frontBrake.dualSided}
 							brakePotCount={totalPotCount(frontBrake.pistons)}
+							brakePistons={frontBrake.pistons}
+							brakeCaliperAngleDeg={frontBrake.caliperAngleDeg}
 						/>
 					{:else}
 						<div class="h-full flex flex-col items-center justify-center gap-2 text-sm text-gray-500 px-4 text-center">
@@ -330,6 +332,8 @@
 							brakeDiscDiameterMm={rearBrake.discDiameterMm}
 							brakeDualSided={rearBrake.dualSided}
 							brakePotCount={totalPotCount(rearBrake.pistons)}
+							brakePistons={rearBrake.pistons}
+							brakeCaliperAngleDeg={rearBrake.caliperAngleDeg}
 						/>
 					{:else}
 						<div class="h-full flex flex-col items-center justify-center gap-2 text-sm text-gray-500 px-4 text-center">

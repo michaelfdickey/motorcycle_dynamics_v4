@@ -26,6 +26,12 @@
 		inputLabel?: string;
 	} = $props();
 
+	$effect(() => {
+		if (typeof brake.caliperAngleDeg !== 'number' || !Number.isFinite(brake.caliperAngleDeg)) {
+			brake.caliperAngleDeg = 90;
+		}
+	});
+
 	const potCount = $derived(totalPotCount(brake.pistons));
 	const pistonArea = $derived(totalPistonArea(brake.pistons));
 	const masterArea = $derived(Math.PI * (brake.masterCylinderDiaMm / 2) ** 2);
@@ -94,6 +100,14 @@
 		unit="mm"
 		secondary={{ unit: 'in', to: mmToIn, from: inToMm, step: 0.005, decimals: 3 }}
 		tooltip="Rotor thickness. Thicker discs store more heat and resist warping; they add unsprung mass. Street rotors are typically 4–6 mm."
+	/>
+	<ParamSlider
+		label="Caliper position"
+		bind:value={brake.caliperAngleDeg}
+		min={0} max={360} step={1} decimals={0}
+		unit="°"
+		hint="0° = top of rotor · 90° = front of wheel · 180° = bottom · 270° = rear (clockwise, right-side view)"
+		tooltip="Angle around the rotor. 0° is the top intersection of the disc with the vertical axis. Positive is clockwise in the right-side view: 90° sits at the front of the wheel, 180° at the bottom, 270° at the rear."
 	/>
 
 	<div>

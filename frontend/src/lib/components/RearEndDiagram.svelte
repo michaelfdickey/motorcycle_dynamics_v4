@@ -4,6 +4,7 @@
 	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
 	import { getViewCam, setViewCam, emptySnap, type CamSnap } from '$lib/viewCamera';
 	import BrakeRotor from './BrakeRotor.svelte';
+	import type { PistonGroup } from '$lib/braking';
 
 	let {
 		results,
@@ -18,6 +19,8 @@
 		brakeDiscDiameterMm = 0,
 		brakeDualSided = false,
 		brakePotCount = 0,
+		brakePistons = [] as PistonGroup[],
+		brakeCaliperAngleDeg = 90,
 	}: {
 		results: RearEndResults;
 		tire: TireDimensions;
@@ -31,6 +34,8 @@
 		brakeDiscDiameterMm?: number;
 		brakeDualSided?: boolean;
 		brakePotCount?: number;
+		brakePistons?: PistonGroup[];
+		brakeCaliperAngleDeg?: number;
 	} = $props();
 
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -480,7 +485,9 @@
 					discDiameterMm={brakeDiscDiameterMm}
 					tireOuterMm={tire.outerRadiusMm}
 					potCount={brakePotCount}
+					pistons={brakePistons}
 					dualSided={brakeDualSided}
+					caliperAngleDeg={brakeCaliperAngleDeg}
 					{sw}
 				/>
 			{/if}

@@ -19,6 +19,8 @@ export interface BrakeParams {
 	masterCylinderDiaMm: number; // master cylinder bore diameter
 	leverRatio: number;          // mechanical advantage of lever/pedal
 	dualSided: boolean;          // true = calipers on both sides of disc
+	/** Caliper position around the rotor. 0° = top of the disc (12 o'clock); positive is clockwise in the right-side view (90° = front of the wheel). */
+	caliperAngleDeg: number;
 }
 
 /** Total piston area across all groups */
@@ -33,12 +35,19 @@ export function totalPotCount(pistons: PistonGroup[]): number {
 
 /** Migrate legacy BrakeParams that used numberOfPots/pistonDiameterMm */
 export function migrateBrakeParams(raw: any): BrakeParams {
-	if (raw.pistons) return raw as BrakeParams;
-	// Legacy format
-	const count = raw.numberOfPots ?? 2;
-	const dia = raw.pistonDiameterMm ?? 30;
-	const { numberOfPots, pistonDiameterMm, ...rest } = raw;
-	return { ...rest, pistons: [{ count, diameterMm: dia }] };
+	let next: BrakeParams;
+	if (raw.pistons) {
+		next = raw as BrakeParams;
+	} else {
+		const count = raw.numberOfPots ?? 2;
+		const dia = raw.pistonDiameterMm ?? 30;
+		const { numberOfPots, pistonDiameterMm, ...rest } = raw;
+		next = { ...rest, pistons: [{ count, diameterMm: dia }] } as BrakeParams;
+	}
+	if (typeof next.caliperAngleDeg !== 'number' || !Number.isFinite(next.caliperAngleDeg)) {
+		next = { ...next, caliperAngleDeg: 90 };
+	}
+	return next;
 }
 
 export interface VehicleParams {
@@ -320,6 +329,7 @@ export function defaultFrontBrake(): BrakeParams {
 		masterCylinderDiaMm: 16,
 		leverRatio: 4,
 		dualSided: true,
+		caliperAngleDeg: 90,
 	};
 }
 
@@ -334,6 +344,7 @@ export function defaultRearBrake(): BrakeParams {
 		masterCylinderDiaMm: 14,
 		leverRatio: 3.5,
 		dualSided: false,
+		caliperAngleDeg: 90,
 	};
 }
 

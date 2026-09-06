@@ -4,8 +4,9 @@
 	import { gridStepMm, gridRange, type UnitSystem } from '$lib/diagramGrid';
 	import { getViewCam, setViewCam, emptySnap, type CamSnap } from '$lib/viewCamera';
 	import BrakeRotor from './BrakeRotor.svelte';
+	import type { PistonGroup } from '$lib/braking';
 
-	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right', unitSystem = 'metric', persistKey = 'frontEnd', brakeDiscDiameterMm = 0, brakeDualSided = false, brakePotCount = 0 }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right'; unitSystem?: UnitSystem; persistKey?: string; brakeDiscDiameterMm?: number; brakeDualSided?: boolean; brakePotCount?: number } = $props();
+	let { results, tire, steeringColumnLengthMm, forkOffsetMm, forkLengthMm, suspensionType, forkTravelMm, compressionPct, spindleOffsetMm, spindleHeightMm, stanchionDiaMm, sliderDiaMm, invertedForks, suspensionOffsetMm, suspensionHeightMm, suspUpperMountHeightMm, suspUpperMountOffsetMm = 0, linkLengthMm = 200, linkOffsetMm = 0, viewSide = 'right', unitSystem = 'metric', persistKey = 'frontEnd', brakeDiscDiameterMm = 0, brakeDualSided = false, brakePotCount = 0, brakePistons = [] as PistonGroup[], brakeCaliperAngleDeg = 90 }: { results: FrontEndResults; tire: TireDimensions; steeringColumnLengthMm: number; forkOffsetMm: number; forkLengthMm: number; suspensionType: string; forkTravelMm: number; compressionPct: number; spindleOffsetMm: number; spindleHeightMm: number; stanchionDiaMm: number; sliderDiaMm: number; invertedForks: boolean; suspensionOffsetMm: number; suspensionHeightMm: number; suspUpperMountHeightMm: number; suspUpperMountOffsetMm?: number; linkLengthMm?: number; linkOffsetMm?: number; viewSide?: 'left' | 'right'; unitSystem?: UnitSystem; persistKey?: string; brakeDiscDiameterMm?: number; brakeDualSided?: boolean; brakePotCount?: number; brakePistons?: PistonGroup[]; brakeCaliperAngleDeg?: number } = $props();
 
 	// Mirror transform for left-side view
 	const mirrorTransform = $derived(viewSide === 'left' ? 'scale(-1, 1)' : '');
@@ -1196,7 +1197,9 @@
 			discDiameterMm={brakeDiscDiameterMm}
 			tireOuterMm={tire.outerRadiusMm}
 			potCount={brakePotCount}
+			pistons={brakePistons}
 			dualSided={brakeDualSided}
+			caliperAngleDeg={brakeCaliperAngleDeg}
 			{sw}
 		/>
 	{/if}
